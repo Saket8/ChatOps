@@ -3,6 +3,7 @@ Main entry point for ChatOps CLI application.
 """
 
 import sys
+from .cli.main import cli
 
 
 def main() -> int:
@@ -12,10 +13,11 @@ def main() -> int:
     Returns:
         int: Exit code (0 for success, non-zero for error)
     """
-    print("ChatOps CLI v0.1.0")
-    print("Offline ChatOps CLI with LangChain + Local LLM")
-    print("Foundation setup complete!")
-    return 0
+    try:
+        cli()
+        return 0
+    except Exception:
+        return 1
 
 
 if __name__ == "__main__":

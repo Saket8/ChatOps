@@ -55,7 +55,7 @@
         "id": "5",
         "title": "CLI Framework with Click",
         "description": "Build the main CLI interface using Click framework with command groups and options",
-        "status": "pending",
+        "status": "done",
         "priority": "high",
         "dependencies": [
           "2"
