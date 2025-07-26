@@ -18,6 +18,7 @@ from ..base import (
 from ...core.langchain_integration import DevOpsCommand, CommandType, RiskLevel
 from ...core.ollama_client import OllamaClient
 from ...core.groq_client import GroqClient
+from ...core.os_detection import os_detection
 
 
 @plugin(
@@ -162,8 +163,13 @@ class LLMPlugin(CommandPlugin):
 
     def _generate_code_assistance_command(self, user_input: str) -> DevOpsCommand:
         """Generate code assistance command"""
+        if os_detection.get_os_info().is_windows:
+            cmd = f"Write-Host 'AI Code Assistant Request: {user_input}'; Write-Host 'Generating code solution...'"
+        else:
+            cmd = f"echo 'AI Code Assistant Request: {user_input}' && echo 'Generating code solution...'"
+        
         return DevOpsCommand(
-            command=f"echo 'AI Code Assistant Request: {user_input}' && echo 'Generating code solution...'",
+            command=cmd,
             description=f"AI code generation and assistance for: {user_input[:60]}{'...' if len(user_input) > 60 else ''}",
             command_type=CommandType.SYSTEM_INFO,
             risk_level=RiskLevel.SAFE,
@@ -174,10 +180,48 @@ class LLMPlugin(CommandPlugin):
         )
 
     def _generate_explanation_command(self, user_input: str) -> DevOpsCommand:
-        """Generate explanation command"""
-        return DevOpsCommand(
-            command=f"echo 'AI Explanation Request: {user_input}' && echo 'Preparing detailed explanation...'",
-            description=f"AI explanation and educational content for: {user_input[:60]}{'...' if len(user_input) > 60 else ''}",
+        """Generate explanation command with OS-specific commands for system queries"""
+        user_input_lower = user_input.lower()
+        
+        # Check if this is a system information query we can provide a real command for
+        if any(term in user_input_lower for term in ["memory", "ram", "system memory"]):
+            # Use OS-specific memory command
+            memory_cmd = os_detection.smart_translate("memory usage")
+            return DevOpsCommand(
+                command=memory_cmd,
+                description=f"Show system memory information",
+                command_type=CommandType.SYSTEM_INFO,
+                risk_level=RiskLevel.SAFE,
+                requires_sudo=False,
+                estimated_duration="< 5 seconds",
+                prerequisites=[],
+                alternative_commands=["Task Manager", "Resource Monitor"]
+            )
+        
+        elif any(term in user_input_lower for term in ["disk", "storage", "space"]):
+            # Use OS-specific disk command  
+            disk_cmd = os_detection.smart_translate("disk usage")
+            return DevOpsCommand(
+                command=disk_cmd,
+                description=f"Show disk usage information",
+                command_type=CommandType.SYSTEM_INFO,
+                risk_level=RiskLevel.SAFE,
+                requires_sudo=False,
+                estimated_duration="< 5 seconds",
+                prerequisites=[],
+                alternative_commands=["File Explorer Properties"]
+            )
+        
+        else:
+            # For other explanations, use OS-appropriate echo command
+            if os_detection.get_os_info().is_windows:
+                echo_cmd = f"Write-Host 'AI Explanation Request: {user_input}'; Write-Host 'Preparing detailed explanation...'"
+            else:
+                echo_cmd = f"echo 'AI Explanation Request: {user_input}' && echo 'Preparing detailed explanation...'"
+            
+            return DevOpsCommand(
+                command=echo_cmd,
+                description=f"AI explanation and educational content for: {user_input[:60]}{'...' if len(user_input) > 60 else ''}",
             command_type=CommandType.SYSTEM_INFO,
             risk_level=RiskLevel.SAFE,
             requires_sudo=False,
@@ -264,16 +308,17 @@ class LLMPlugin(CommandPlugin):
                 if self._groq_client:
                     response = await self._groq_client.generate_response(
                         prompt=user_input,
-                        context=conversation_context
+                        system_prompt=conversation_context
                     )
             except Exception as e:
                 self.logger.warning(f"Groq request failed: {e}")
 
             if not response and self._ollama_client:
                 try:
+                    # Ollama doesn't support separate context, include it in prompt
+                    full_prompt = f"{conversation_context}\n\nUser: {user_input}\nAssistant:"
                     response = await self._ollama_client.generate_response(
-                        prompt=user_input,
-                        context=conversation_context
+                        prompt=full_prompt
                     )
                 except Exception as e:
                     self.logger.warning(f"Ollama request failed: {e}")
@@ -282,10 +327,10 @@ class LLMPlugin(CommandPlugin):
                 # Add response to history
                 self._conversation_history.append({
                     "role": "assistant",
-                    "content": response,
+                    "content": response.content,
                     "timestamp": datetime.now().isoformat()
                 })
-                return response
+                return response.content
             else:
                 return "Sorry, I'm having trouble connecting to the AI service. Please check your LLM configuration."
 

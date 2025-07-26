@@ -173,4 +173,21 @@ CRITICAL: Always provide commands appropriate for {os_info.name}:
             "mixtral-8x7b-32768",  # Mixtral 8x7B (good balance)
             "gemma-7b-it",         # Google Gemma 7B
             "gemma2-9b-it",        # Google Gemma 2 9B
-        ] 
+        ]
+    
+    async def test_connection(self) -> bool:
+        """Test connection to Groq API"""
+        try:
+            if not self._connected:
+                return await self.connect()
+            return True
+        except Exception as e:
+            self.logger.error(f"Test connection failed: {e}")
+            return False
+    
+    async def chat(self, prompt: str, model: str | None = None) -> GroqResponse:
+        """
+        Chat method for compatibility with interactive mode.
+        Alias for generate_response with simpler interface.
+        """
+        return await self.generate_response(prompt=prompt, model=model) 

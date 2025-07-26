@@ -1089,32 +1089,52 @@ def _process_chat_input(user_input: str, ctx: CLIContext, model: Optional[str]) 
             if handler_plugin:
                 progress.update(task, description=f"Using {handler_plugin.metadata.name} plugin...")
                 
-                # Generate command using plugin
-                command = asyncio.run(
-                    handler_plugin.generate_command(user_input, plugin_context)
-                )
-
-                if command:
-                    history_entry['plugin_used'] = handler_plugin.metadata.name
-                    history_entry['command_generated'] = command.command
-                    
-                    # Validate and display command
-                    if asyncio.run(handler_plugin.validate_command(command, plugin_context)):
-                        _display_command(command, False, ctx.verbose)
+                # Special handling for LLM plugin - call process_llm_request directly
+                if handler_plugin.metadata.name == "llm" and hasattr(handler_plugin, 'process_llm_request'):
+                    try:
+                        ai_response = asyncio.run(handler_plugin.process_llm_request(user_input, plugin_context))
+                        history_entry['plugin_used'] = handler_plugin.metadata.name
+                        history_entry['ai_response'] = ai_response
                         
-                        # Ask for confirmation in chat mode
-                        if _confirm_command_execution():
-                            asyncio.run(_execute_command(command, ctx, ctx.verbose))
-                            history_entry['executed'] = True
-                        else:
-                            history_entry['executed'] = False
-                            console.print("[yellow]Command execution skipped[/yellow]")
-                    else:
-                        console.print("⚠️ [yellow]Plugin command validation failed, falling back to AI[/yellow]")
+                        # Display AI response directly
+                        console.print(Panel(
+                            ai_response,
+                            title="🤖 AI Response",
+                            border_style="blue"
+                        ))
+                        
+                    except Exception as e:
+                        console.print(f"❌ [red]AI processing failed: {e}[/red]")
+                        history_entry['ai_error'] = str(e)
                         _fallback_to_ai(context_prompt, ctx, history_entry, model)
+                        
                 else:
-                    console.print("⚠️ [yellow]Plugin couldn't generate command, falling back to AI[/yellow]")
-                    _fallback_to_ai(context_prompt, ctx, history_entry, model)
+                    # Regular plugin handling for command generation
+                    command = asyncio.run(
+                        handler_plugin.generate_command(user_input, plugin_context)
+                    )
+
+                    if command:
+                        history_entry['plugin_used'] = handler_plugin.metadata.name
+                        history_entry['command_generated'] = command.command
+                        
+                        # Validate and display command
+                        if asyncio.run(handler_plugin.validate_command(command, plugin_context)):
+                            _display_command(command, False, ctx.verbose)
+                            
+                            # Ask for confirmation in chat mode
+                            if _confirm_command_execution():
+                                asyncio.run(_execute_command(command, ctx, ctx.verbose))
+                                history_entry['executed'] = True
+                            else:
+                                history_entry['executed'] = False
+                                console.print("[yellow]Command execution skipped[/yellow]")
+                        else:
+                            console.print("⚠️ [yellow]Plugin command validation failed, falling back to AI[/yellow]")
+                            _fallback_to_ai(context_prompt, ctx, history_entry, model)
+                    else:
+                        console.print("⚠️ [yellow]Plugin couldn't generate command, falling back to AI[/yellow]")
+                        _fallback_to_ai(context_prompt, ctx, history_entry, model)
             else:
                 # No plugin found, use AI
                 if ctx.verbose:

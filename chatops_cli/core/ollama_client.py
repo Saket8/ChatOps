@@ -362,3 +362,13 @@ class OllamaClient:
             info["ollama_version"] = "unknown"
 
         return info
+    
+    async def test_connection(self) -> bool:
+        """Test connection to Ollama service"""
+        try:
+            # Try to connect and get a simple response
+            response = requests.get(f"{self.host}/api/version", timeout=5)
+            return response.status_code == 200
+        except Exception as e:
+            self.logger.error(f"Ollama test connection failed: {e}")
+            return False
