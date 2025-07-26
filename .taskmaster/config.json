@@ -1,21 +1,21 @@
 {
   "models": {
     "main": {
-      "provider": "mcp",
-      "modelId": "mcp-sampling",
-      "maxTokens": 100000,
+      "provider": "groq",
+      "modelId": "llama-3.3-70b-versatile",
+      "maxTokens": 32768,
       "temperature": 0.2
     },
     "research": {
-      "provider": "mcp",
-      "modelId": "mcp-sampling",
-      "maxTokens": 100000,
+      "provider": "groq",
+      "modelId": "llama-4-maverick",
+      "maxTokens": 32768,
       "temperature": 0.1
     },
     "fallback": {
-      "provider": "mcp",
-      "modelId": "mcp-sampling",
-      "maxTokens": 100000,
+      "provider": "groq",
+      "modelId": "llama-3.1-8b-instant",
+      "maxTokens": 131072,
       "temperature": 0.2
     }
   },

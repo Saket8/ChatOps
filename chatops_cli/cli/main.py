@@ -22,6 +22,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from ..settings import settings
 from ..core.groq_client import GroqClient, GroqResponse
 from ..core.langchain_integration import LangChainIntegration, DevOpsCommand, RiskLevel
+from ..core.command_executor import CommandExecutor, ExecutionContext, ExecutionStatus
 from ..plugins import PluginManager
 
 
@@ -38,6 +39,7 @@ class CLIContext:
         self.groq_client = None
         self.langchain = None
         self.plugin_manager = None
+        self.command_executor = None
 
     def setup_logging(self):
         """Setup logging based on debug/verbose flags"""
@@ -84,6 +86,7 @@ def cli(ctx: CLIContext, debug: bool, verbose: bool, config: Optional[str]):
     ctx.groq_client = GroqClient()
     ctx.langchain = LangChainIntegration()
     ctx.plugin_manager = PluginManager()
+    ctx.command_executor = CommandExecutor()
 
     if debug:
         console.print("[dim]Debug mode enabled[/dim]", style="blue")
@@ -191,7 +194,7 @@ def ask(
                             _display_command(command, dry_run, ctx.verbose)
 
                             if not dry_run:
-                                _execute_command(command, ctx.verbose)
+                                asyncio.run(_execute_command(command, ctx, ctx.verbose))
                         return
                     else:
                         console.print(
@@ -204,7 +207,7 @@ def ask(
 
             task = progress.add_task("Connecting to Ollama...", total=None)
 
-            connected = asyncio.run(ctx.ollama_client.connect())
+            connected = asyncio.run(ctx.groq_client.connect())
             if not connected:
                 console.print("❌ [red]Failed to connect to Groq API[/red]")
                 console.print(
@@ -225,11 +228,11 @@ def ask(
             # Get response from Ollama
             progress.update(task, description="Waiting for AI response...")
 
-            response = await ctx.groq_client.generate_response(
+            response = asyncio.run(ctx.groq_client.generate_response(
                 prompt=prompt,
                 max_tokens=200 if explain else 100,
                 temperature=0.1,
-            )
+            ))
 
         if not response.success:
             console.print(f"❌ [red]AI request failed: {response.error}[/red]")
@@ -263,7 +266,7 @@ def ask(
 
             # Execute if not dry run and user confirms
             if not dry_run:
-                _execute_command(command, ctx.verbose)
+                asyncio.run(_execute_command(command, ctx, ctx.verbose))
 
     except KeyboardInterrupt:
         console.print("\n⏹️ [yellow]Operation cancelled by user[/yellow]")
@@ -303,7 +306,7 @@ def explain(ctx: CLIContext, command: str):
             task = progress.add_task("Connecting to AI...", total=None)
 
             # Check connection
-            connected = asyncio.run(ctx.ollama_client.connect())
+            connected = asyncio.run(ctx.groq_client.connect())
             if not connected:
                 # Fallback to offline explanation
                 _offline_command_explanation(command)
@@ -353,18 +356,18 @@ def status(ctx: CLIContext):
     table.add_column("Status", style="green")
     table.add_column("Details", style="dim")
 
-    # Check Ollama connection
+    # Check Groq connection
     try:
-        connected = asyncio.run(ctx.ollama_client.connect())
-        ollama_status = "✅ Connected" if connected else "❌ Disconnected"
-        ollama_details = (
-            "Ready for AI requests" if connected else "Run 'ollama serve' to start"
+        connected = asyncio.run(ctx.groq_client.connect())
+        groq_status = "✅ Connected" if connected else "❌ Disconnected"
+        groq_details = (
+            "Ready for AI requests" if connected else "Check GROQ_API_KEY in .env"
         )
     except:
-        ollama_status = "❌ Error"
-        ollama_details = "Ollama service not available"
+        groq_status = "❌ Error"
+        groq_details = "Groq service not available"
 
-    table.add_row("Ollama Service", ollama_status, ollama_details)
+    table.add_row("Groq Service", groq_status, groq_details)
 
     # Check models
     if connected:
@@ -620,27 +623,84 @@ def _display_command(command: DevOpsCommand, dry_run: bool, verbose: bool):
     )
 
 
-def _execute_command(command: DevOpsCommand, verbose: bool):
-    """Handle command execution with safety checks"""
-
-    # Safety confirmation for risky commands
-    if command.requires_confirmation or command.risk_level in [
-        RiskLevel.HIGH,
-        RiskLevel.CRITICAL,
-    ]:
-        console.print(
-            f"\n⚠️ [yellow]This command has {command.risk_level.value} risk level[/yellow]"
-        )
-
-        if not click.confirm("Do you want to proceed?"):
-            console.print("⏹️ [yellow]Command execution cancelled[/yellow]")
-            return
-
-    # Note: Actual command execution will be implemented in Task 8
-    console.print(
-        "\n[dim]Note: Command execution will be implemented in Task 8 (Command Executor Service)[/dim]"
+async def _execute_command(command: DevOpsCommand, ctx: CLIContext, verbose: bool):
+    """Handle command execution with safety checks using CommandExecutor"""
+    
+    # Create execution context
+    execution_context = ExecutionContext(
+        working_directory=Path.cwd(),
+        environment_vars={},
+        timeout_seconds=60,
+        dry_run=False,
+        interactive=True,
+        log_execution=True
     )
-    console.print(f"[dim]Would execute: {command.command}[/dim]")
+    
+    # User confirmation callback
+    async def confirm_execution(dev_ops_cmd: DevOpsCommand) -> bool:
+        console.print(
+            f"\n⚠️ [yellow]This command has {dev_ops_cmd.risk_level.value} risk level[/yellow]"
+        )
+        console.print(f"[bold]Command:[/bold] [cyan]{dev_ops_cmd.command}[/cyan]")
+        console.print(f"[bold]Description:[/bold] {dev_ops_cmd.description}")
+        
+        return click.confirm("\nDo you want to proceed with execution?")
+    
+    try:
+        # Execute command using CommandExecutor
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task("Executing command...", total=None)
+            
+            result = await ctx.command_executor.execute_command(
+                command,
+                execution_context,
+                confirm_execution
+            )
+        
+        # Display results
+        _display_execution_result(result, verbose)
+        
+    except Exception as e:
+        console.print(f"❌ [red]Execution error: {e}[/red]")
+        if verbose:
+            import traceback
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
+
+def _display_execution_result(result, verbose: bool):
+    """Display command execution results"""
+    status_colors = {
+        ExecutionStatus.COMPLETED: "green",
+        ExecutionStatus.FAILED: "red", 
+        ExecutionStatus.CANCELLED: "yellow",
+        ExecutionStatus.TIMEOUT: "orange3"
+    }
+    
+    status_color = status_colors.get(result.status, "white")
+    
+    # Status line
+    console.print(f"\n[{status_color}]● {result.status.value.upper()}[/{status_color}] "
+                 f"({result.execution_time:.2f}s) [dim]- Return code: {result.return_code}[/dim]")
+    
+    # Output
+    if result.stdout.strip():
+        console.print(f"\n[bold]Output:[/bold]")
+        console.print(result.stdout.strip())
+    
+    if result.stderr.strip():
+        console.print(f"\n[bold]Error Output:[/bold]")
+        console.print(f"[red]{result.stderr.strip()}[/red]")
+    
+    if result.error_message and verbose:
+        console.print(f"\n[bold]Error Details:[/bold] [red]{result.error_message}[/red]")
+    
+    if result.user_cancelled:
+        console.print("⏹️ [yellow]Command execution was cancelled by user[/yellow]")
 
 
 def _offline_command_explanation(command: str):
