@@ -1,0 +1,2 @@
+# This file tells GitHub Pages to serve files directly without Jekyll processing
+# This prevents issues with files starting with underscores or in hidden folders 
