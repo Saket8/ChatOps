@@ -245,7 +245,7 @@ class PluginManager:
                             loaded_count += 1
                             self.logger.info(f"Successfully loaded plugin class: {name}")
                         else:
-                            self.logger.error(f"Failed to load plugin class: {name}")
+                            self.logger.warning(f"Plugin class {name} failed to load - skipping")
                     
                 except ImportError as e:
                     self.logger.error(f"Failed to import builtin plugin {module_name}: {e}")
@@ -371,7 +371,7 @@ class PluginManager:
                 self.logger.info(f"Loaded plugin: {plugin_name} v{metadata.version}")
                 return True
             else:
-                self.logger.error(f"Failed to initialize plugin {plugin_name}")
+                self.logger.warning(f"Plugin {plugin_name} initialization failed - skipping")
                 return False
 
         except Exception as e:

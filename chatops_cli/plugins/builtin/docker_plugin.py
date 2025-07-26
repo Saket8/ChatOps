@@ -84,7 +84,7 @@ class DockerPlugin(CommandPlugin):
         try:
             # Check if Docker is available
             if not shutil.which("docker"):
-                self.logger.warning("Docker command not found in PATH")
+                self.logger.debug("Docker command not found in PATH - plugin will be disabled")
                 return False
 
             # Test Docker connectivity (optional - may not have Docker running)
