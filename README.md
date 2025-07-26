@@ -161,7 +161,42 @@ python -m poetry run python -m chatops_cli plugins --list
 
 # With AI integration (requires API key)
 python -m poetry run python -m chatops_cli ask "check disk usage" --dry-run
+
+# Interactive Chat Mode (Recommended!)
+python -m poetry run python -m chatops_cli chat
 ```
+
+### **Windows Shortcuts (Easier Usage)**
+
+For Windows users, you can use these shortcuts for easier access:
+
+```powershell
+# Start interactive chat (recommended)
+.\chat.ps1
+# or
+.\chat.bat
+
+# Access all CLI commands
+.\chatops.ps1
+# or
+.\chatops.bat
+```
+
+### **Global Installation (Recommended!)**
+
+Install ChatOps globally so you can use it from anywhere:
+
+```powershell
+# Install globally (run once)
+.\setup-global.ps1
+
+# Now you can use from any directory:
+chat                    # Start interactive chat
+chatops --help         # Get help
+chatops plugins --list # List plugins
+```
+
+**After global installation, you can run `chat` from any directory!**
 
 ## Project Structure
 
