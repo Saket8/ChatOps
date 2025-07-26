@@ -19,9 +19,10 @@ from rich.table import Table
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from ..core.ollama_client import OllamaClient, OllamaResponse
+from ..config import settings
+from ..core.groq_client import GroqClient, GroqResponse
 from ..core.langchain_integration import LangChainIntegration, DevOpsCommand, RiskLevel
-from ..plugins import PluginManager, PluginCapability
+from ..plugins import PluginManager
 
 
 # Global console for rich output
@@ -34,7 +35,7 @@ class CLIContext:
         self.debug = False
         self.verbose = False
         self.config_file = None
-        self.ollama_client = None
+        self.groq_client = None
         self.langchain = None
         self.plugin_manager = None
 
@@ -80,7 +81,7 @@ def cli(ctx: CLIContext, debug: bool, verbose: bool, config: Optional[str]):
     ctx.setup_logging()
 
     # Initialize core components
-    ctx.ollama_client = OllamaClient()
+    ctx.groq_client = GroqClient()
     ctx.langchain = LangChainIntegration()
     ctx.plugin_manager = PluginManager()
 
