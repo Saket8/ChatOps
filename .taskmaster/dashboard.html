@@ -573,8 +573,25 @@
         </div>
 
         <div class="update-time">
-            Last updated: January 20, 2025 - Task 5 completed! Week 1 Goals: 100% COMPLETE! 🎉
+            Last updated: <span id="current-date"></span> - Task 5 completed! Week 1 Goals: 100% COMPLETE! 🎉
         </div>
+
+        <script>
+            // Dynamic date display
+            function updateCurrentDate() {
+                const now = new Date();
+                const options = { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric'
+                };
+                const formattedDate = now.toLocaleDateString('en-US', options);
+                document.getElementById('current-date').textContent = formattedDate;
+            }
+            
+            // Update date when page loads
+            updateCurrentDate();
+        </script>
     </div>
 </body>
 </html> 
