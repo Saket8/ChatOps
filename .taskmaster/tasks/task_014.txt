@@ -1,0 +1,11 @@
+# Task ID: 14
+# Title: GitHub Actions CI/CD Pipeline
+# Status: pending
+# Dependencies: 13 (Not found)
+# Priority: medium
+# Description: Set up automated testing and quality checks using GitHub Actions
+# Details:
+Create GitHub Actions workflows for testing on multiple Python versions, code quality checks (black, ruff), security scanning, and automated releases. Include dependency caching and artifact management.
+
+# Test Strategy:
+Verify workflow triggers, test matrix execution, validate quality gate enforcement, and test artifact generation.

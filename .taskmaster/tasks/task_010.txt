@@ -1,0 +1,11 @@
+# Task ID: 10
+# Title: Configuration Management
+# Status: pending
+# Dependencies: 3 (Not found)
+# Priority: medium
+# Description: Implement application configuration system with environment variables and config files
+# Details:
+Create Settings class using Pydantic for configuration validation, support for .env files, command-line overrides, and default values. Include configuration for Ollama connection, model selection, and security settings.
+
+# Test Strategy:
+Test configuration loading from various sources, verify validation rules, and test override precedence.

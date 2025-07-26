@@ -1,0 +1,11 @@
+# Task ID: 12
+# Title: Safety and Security Features
+# Status: pending
+# Dependencies: 8 (Not found)
+# Priority: high
+# Description: Implement security measures including command validation, dry-run mode, and operation rollback
+# Details:
+Create safety mechanisms including command preview, dry-run execution, destructive operation confirmation, command blacklisting, and basic rollback capabilities for reversible operations.
+
+# Test Strategy:
+Test dry-run mode accuracy, verify confirmation prompts, validate command filtering, and test rollback scenarios.

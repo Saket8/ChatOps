@@ -1,0 +1,84 @@
+[project]
+name = "chatops-cli"
+version = "0.1.0"
+description = "Offline ChatOps CLI with LangChain + Local LLM"
+authors = [
+    {name = "Your Name",email = "your.email@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1.0",
+    "langchain-core>=0.1.0",
+    "langchain-text-splitters>=0.0.1",
+    "pydantic>=2.5.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.7.0",
+    "requests>=2.31.0",
+    "aiohttp>=3.9.0",
+    "ollama>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.12.0",
+    "ruff>=0.1.8",
+    "mypy>=1.8.0",
+]
+
+[project.scripts]
+chatops = "chatops_cli.main:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "chatops-cli"
+version = "0.1.0"
+description = "Offline ChatOps CLI with LangChain + Local LLM"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "chatops_cli"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+click = "^8.1.0"
+langchain-core = "^0.1.0"
+langchain-text-splitters = "^0.0.1"
+pydantic = "^2.5.0"
+python-dotenv = "^1.0.0"
+rich = "^13.7.0"
+requests = "^2.31.0"
+aiohttp = "^3.9.0"
+ollama = "^0.1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-cov = "^4.1.0"
+pytest-asyncio = "^0.21.0"
+black = "^23.12.0"
+ruff = "^0.1.8"
+mypy = "^1.8.0"
+
+[tool.poetry.scripts]
+chatops = "chatops_cli.main:main"
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.pyi?$'
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
