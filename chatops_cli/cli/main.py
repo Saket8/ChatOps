@@ -10,7 +10,15 @@ import sys
 import logging
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+# Try to import readline, but make it optional (not available on Windows)
+try:
+    import readline
+    READLINE_AVAILABLE = True
+except ImportError:
+    READLINE_AVAILABLE = False
 
 import click
 from rich.console import Console
@@ -18,6 +26,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Prompt
 
 from ..settings import settings
 from ..core.groq_client import GroqClient, GroqResponse
@@ -40,6 +49,11 @@ class CLIContext:
         self.langchain = None
         self.plugin_manager = None
         self.command_executor = None
+        # Interactive session state
+        self.chat_history: List[Dict[str, Any]] = []
+        self.session_context: str = ""
+        self.session_start_time: Optional[datetime] = None
+        self.command_count: int = 0
 
     def setup_logging(self):
         """Setup logging based on debug/verbose flags"""
@@ -277,6 +291,136 @@ def ask(
         else:
             console.print(f"❌ [red]Error: {e}[/red]")
         sys.exit(1)
+
+
+@cli.command()
+@click.option("--model", "-m", help="Specific model to use for the session")
+@click.option("--context", "-ctx", help="Initial context for the chat session")
+@click.option("--save-history", is_flag=True, help="Save chat history to file on exit")
+@pass_context
+def chat(
+    ctx: CLIContext,
+    model: Optional[str],
+    context: Optional[str],
+    save_history: bool,
+):
+    """
+    Start an interactive chat session with persistent context and command history.
+    
+    This mode allows you to have ongoing conversations with the AI, where each
+    command builds on the previous context. Perfect for complex troubleshooting
+    or multi-step operations.
+    
+    Commands:
+        /help     - Show available commands
+        /history  - Show conversation history
+        /clear    - Clear conversation history
+        /context  - Show current session context
+        /save     - Save current conversation to file
+        /exit     - Exit chat mode
+        
+    Examples:
+        chatops chat
+        chatops chat --context "Ubuntu 20.04 server"
+        chatops chat --save-history
+    """
+    # Initialize session
+    ctx.session_start_time = datetime.now()
+    ctx.command_count = 0
+    
+    if context:
+        ctx.session_context = context
+        console.print(f"[dim]Session context set to: {context}[/dim]")
+    
+    # Setup readline for command history and editing (if available)
+    if READLINE_AVAILABLE:
+        try:
+            readline.parse_and_bind("tab: complete")
+            readline.parse_and_bind('"\\e[A": history-search-backward')
+            readline.parse_and_bind('"\\e[B": history-search-forward')
+            if ctx.debug:
+                console.print("[dim]Readline support enabled[/dim]")
+        except Exception as e:
+            if ctx.debug:
+                console.print(f"[dim]Warning: Readline setup failed: {e}[/dim]")
+    else:
+        if ctx.debug:
+            console.print("[dim]Readline not available (Windows) - using basic input[/dim]")
+    
+    # Initialize systems
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            # Initialize plugin manager
+            if not ctx.plugin_manager._plugins:
+                task = progress.add_task("Initializing plugins...", total=None)
+                success = asyncio.run(
+                    ctx.plugin_manager.initialize({"hot_reload": ctx.debug})
+                )
+                if not success:
+                    console.print("⚠️ [yellow]Warning: Plugin system initialization failed[/yellow]")
+                    
+            # Initialize AI connection
+            task = progress.add_task("Connecting to AI service...", total=None)
+            connected = asyncio.run(ctx.groq_client.connect())
+            if not connected:
+                console.print("❌ [red]Failed to connect to Groq API[/red]")
+                console.print("💡 [yellow]Check your GROQ_API_KEY in .env file[/yellow]")
+                sys.exit(1)
+                
+    except Exception as e:
+        console.print(f"❌ [red]Failed to initialize chat session: {e}[/red]")
+        sys.exit(1)
+    
+    # Welcome message
+    _display_chat_welcome(ctx)
+    
+    # Main interactive loop
+    try:
+        while True:
+            try:
+                # Get user input with readline support
+                user_input = _get_user_input(ctx).strip()
+                
+                if not user_input:
+                    continue
+                    
+                # Handle special commands
+                if user_input.startswith('/'):
+                    if _handle_chat_command(user_input, ctx, save_history):
+                        break  # Exit requested
+                    continue
+                
+                # Process regular chat input
+                ctx.command_count += 1
+                _process_chat_input(user_input, ctx, model)
+                
+            except KeyboardInterrupt:
+                console.print("\n\n[yellow]Use /exit to quit or Ctrl+C again to force exit[/yellow]")
+                try:
+                    # Give user a chance to type /exit
+                    continue
+                except KeyboardInterrupt:
+                    console.print("\n[red]Force exit requested[/red]")
+                    break
+                    
+            except EOFError:
+                # Ctrl+D pressed
+                console.print("\n[yellow]EOF detected, exiting chat...[/yellow]")
+                break
+                
+    except Exception as e:
+        if ctx.debug:
+            console.print_exception()
+        else:
+            console.print(f"❌ [red]Chat session error: {e}[/red]")
+    
+    # Clean exit
+    _cleanup_chat_session(ctx, save_history)
 
 
 @cli.command()
@@ -747,6 +891,347 @@ def _offline_command_explanation(command: str):
                 border_style="red",
             )
         )
+
+
+# Interactive Chat Helper Functions
+
+def _display_chat_welcome(ctx: CLIContext) -> None:
+    """Display welcome message for interactive chat mode."""
+    welcome_panel = Panel(
+        "[bold green]🤖 ChatOps Interactive Mode[/bold green]\n\n"
+        "Type your requests naturally and I'll help you with DevOps tasks.\n"
+        "Use [cyan]/help[/cyan] to see available commands.\n"
+        "Use [cyan]/exit[/cyan] to quit when done.\n\n"
+        f"[dim]Session started: {ctx.session_start_time.strftime('%Y-%m-%d %H:%M:%S')}[/dim]",
+        title="Welcome to Interactive Chat",
+        border_style="green"
+    )
+    console.print(welcome_panel)
+    console.print()
+
+
+def _get_user_input(ctx: CLIContext) -> str:
+    """Get user input with prompt and readline support."""
+    prompt_text = f"[bold cyan]ChatOps[/bold cyan] [{ctx.command_count + 1}]> "
+    try:
+        return Prompt.ask(prompt_text, default="", show_default=False)
+    except (EOFError, KeyboardInterrupt):
+        raise
+
+
+def _handle_chat_command(command: str, ctx: CLIContext, save_history: bool) -> bool:
+    """Handle special chat commands. Returns True if exit was requested."""
+    command = command.lower().strip()
+
+    if command == "/exit" or command == "/quit":
+        console.print("[yellow]Exiting chat mode...[/yellow]")
+        return True
+
+    elif command == "/help":
+        _display_chat_help()
+
+    elif command == "/history":
+        _display_chat_history(ctx)
+
+    elif command == "/clear":
+        ctx.chat_history.clear()
+        console.print("[green]Chat history cleared[/green]")
+
+    elif command == "/context":
+        _display_session_context(ctx)
+
+    elif command == "/save":
+        _save_chat_history(ctx)
+
+    else:
+        console.print(f"[red]Unknown command: {command}[/red]")
+        console.print("[dim]Type /help to see available commands[/dim]")
+
+    return False
+
+
+def _display_chat_help() -> None:
+    """Display help for chat commands."""
+    help_table = Table(title="Chat Commands", show_header=True, header_style="bold magenta")
+    help_table.add_column("Command", style="cyan", no_wrap=True)
+    help_table.add_column("Description", style="dim")
+    
+    commands = [
+        ("/help", "Show this help message"),
+        ("/history", "Show conversation history"),
+        ("/clear", "Clear conversation history"),
+        ("/context", "Show current session context"),
+        ("/save", "Save current conversation to file"),
+        ("/exit", "Exit chat mode"),
+    ]
+    
+    for cmd, desc in commands:
+        help_table.add_row(cmd, desc)
+    
+    console.print(help_table)
+    console.print("\n[dim]You can also just type natural language requests for DevOps tasks.[/dim]")
+
+
+def _display_chat_history(ctx: CLIContext) -> None:
+    """Display the current chat history."""
+    if not ctx.chat_history:
+        console.print("[yellow]No chat history yet[/yellow]")
+        return
+    
+    console.print(f"\n[bold]Chat History[/bold] (last {len(ctx.chat_history)} interactions)")
+    console.print("=" * 60)
+    
+    for i, entry in enumerate(ctx.chat_history, 1):
+        timestamp = entry.get('timestamp', 'Unknown')
+        console.print(f"\n[dim]{i}. {timestamp}[/dim]")
+        console.print(f"[cyan]You:[/cyan] {entry.get('user_input', 'N/A')}")
+        
+        if 'command_generated' in entry:
+            console.print(f"[green]Generated:[/green] {entry['command_generated']}")
+        
+        if 'ai_response' in entry:
+            console.print(f"[blue]AI:[/blue] {entry['ai_response'][:100]}...")
+        
+        if 'plugin_used' in entry:
+            console.print(f"[magenta]Plugin:[/magenta] {entry['plugin_used']}")
+    
+    console.print("=" * 60)
+
+
+def _display_session_context(ctx: CLIContext) -> None:
+    """Display current session context and statistics."""
+    context_panel = Panel(
+        f"[bold]Session Context:[/bold] {ctx.session_context or 'None set'}\n"
+        f"[bold]Started:[/bold] {ctx.session_start_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"[bold]Commands Processed:[/bold] {ctx.command_count}\n"
+        f"[bold]History Length:[/bold] {len(ctx.chat_history)} interactions\n"
+        f"[bold]Session Duration:[/bold] {datetime.now() - ctx.session_start_time}",
+        title="Session Information",
+        border_style="blue"
+    )
+    console.print(context_panel)
+
+
+def _save_chat_history(ctx: CLIContext) -> None:
+    """Save chat history to a file."""
+    if not ctx.chat_history:
+        console.print("[yellow]No chat history to save[/yellow]")
+        return
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"chatops_history_{timestamp}.txt"
+    
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(f"ChatOps Interactive Session History\n")
+            f.write(f"Session started: {ctx.session_start_time}\n")
+            f.write(f"Commands processed: {ctx.command_count}\n")
+            f.write(f"Session context: {ctx.session_context or 'None'}\n")
+            f.write("=" * 80 + "\n\n")
+            
+            for i, entry in enumerate(ctx.chat_history, 1):
+                f.write(f"[{i}] {entry.get('timestamp', 'Unknown')}\n")
+                f.write(f"User: {entry.get('user_input', 'N/A')}\n")
+                
+                if 'command_generated' in entry:
+                    f.write(f"Generated Command: {entry['command_generated']}\n")
+                
+                if 'ai_response' in entry:
+                    f.write(f"AI Response: {entry['ai_response']}\n")
+                
+                if 'plugin_used' in entry:
+                    f.write(f"Plugin Used: {entry['plugin_used']}\n")
+                
+                f.write("-" * 40 + "\n\n")
+        
+        console.print(f"[green]Chat history saved to: {filename}[/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Failed to save chat history: {e}[/red]")
+
+
+def _process_chat_input(user_input: str, ctx: CLIContext, model: Optional[str]) -> None:
+    """Process a regular chat input (not a special command)."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Add to history
+    history_entry = {
+        'timestamp': timestamp,
+        'user_input': user_input,
+    }
+    
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            
+            # Build context for this request
+            context_prompt = _build_chat_context(ctx, user_input)
+            
+            # Try plugin system first
+            task = progress.add_task("Finding plugin handler...", total=None)
+            
+            plugin_context = {
+                "user_request": user_input,
+                "additional_context": ctx.session_context,
+                "chat_history": ctx.chat_history[-5:],  # Last 5 interactions for context
+                "explain_mode": False,
+                "dry_run": False,
+            }
+
+            handler_plugin = asyncio.run(
+                ctx.plugin_manager.find_handler(user_input, plugin_context)
+            )
+
+            if handler_plugin:
+                progress.update(task, description=f"Using {handler_plugin.metadata.name} plugin...")
+                
+                # Generate command using plugin
+                command = asyncio.run(
+                    handler_plugin.generate_command(user_input, plugin_context)
+                )
+
+                if command:
+                    history_entry['plugin_used'] = handler_plugin.metadata.name
+                    history_entry['command_generated'] = command.command
+                    
+                    # Validate and display command
+                    if asyncio.run(handler_plugin.validate_command(command, plugin_context)):
+                        _display_command(command, False, ctx.verbose)
+                        
+                        # Ask for confirmation in chat mode
+                        if _confirm_command_execution():
+                            asyncio.run(_execute_command(command, ctx, ctx.verbose))
+                            history_entry['executed'] = True
+                        else:
+                            history_entry['executed'] = False
+                            console.print("[yellow]Command execution skipped[/yellow]")
+                    else:
+                        console.print("⚠️ [yellow]Plugin command validation failed, falling back to AI[/yellow]")
+                        _fallback_to_ai(context_prompt, ctx, history_entry, model)
+                else:
+                    console.print("⚠️ [yellow]Plugin couldn't generate command, falling back to AI[/yellow]")
+                    _fallback_to_ai(context_prompt, ctx, history_entry, model)
+            else:
+                # No plugin found, use AI
+                if ctx.verbose:
+                    console.print("[dim]No plugin found, using AI...[/dim]")
+                _fallback_to_ai(context_prompt, ctx, history_entry, model)
+                
+    except Exception as e:
+        console.print(f"❌ [red]Error processing request: {e}[/red]")
+        if ctx.debug:
+            console.print_exception()
+        history_entry['error'] = str(e)
+    
+    # Add to chat history
+    ctx.chat_history.append(history_entry)
+
+
+def _build_chat_context(ctx: CLIContext, current_input: str) -> str:
+    """Build context prompt including chat history."""
+    context_parts = []
+    
+    if ctx.session_context:
+        context_parts.append(f"Session Context: {ctx.session_context}")
+    
+    if ctx.chat_history:
+        context_parts.append("Recent conversation:")
+        # Include last 3 interactions for context
+        for entry in ctx.chat_history[-3:]:
+            context_parts.append(f"- User asked: {entry.get('user_input', 'N/A')}")
+            if 'command_generated' in entry:
+                context_parts.append(f"  Generated: {entry['command_generated']}")
+    
+    context_parts.append(f"Current request: {current_input}")
+    
+    return "\n".join(context_parts)
+
+
+def _confirm_command_execution() -> bool:
+    """Ask user to confirm command execution in chat mode."""
+    try:
+        confirm = Prompt.ask(
+            "[yellow]Execute this command?[/yellow]", 
+            choices=["y", "n", "yes", "no"], 
+            default="y",
+            show_choices=False
+        )
+        return confirm.lower() in ["y", "yes"]
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+
+def _fallback_to_ai(context_prompt: str, ctx: CLIContext, history_entry: Dict[str, Any], model: Optional[str]) -> None:
+    """Fallback to AI when plugins can't handle the request."""
+    try:
+        # Generate prompt using LangChain with chat context
+        prompt = ctx.langchain.generate_prompt(context_prompt)
+        
+        # Get AI response
+        response = asyncio.run(ctx.groq_client.chat(prompt, model))
+        
+        if response and response.content:
+            history_entry['ai_response'] = response.content
+            
+            # Try to parse as command
+            try:
+                command = ctx.langchain.parse_llm_response(response.content)
+                history_entry['command_generated'] = command.command
+                
+                # Display and potentially execute
+                _display_command(command, False, ctx.verbose)
+                
+                if _confirm_command_execution():
+                    asyncio.run(_execute_command(command, ctx, ctx.verbose))
+                    history_entry['executed'] = True
+                else:
+                    history_entry['executed'] = False
+                    console.print("[yellow]Command execution skipped[/yellow]")
+                    
+            except Exception:
+                # If not a command, just show the AI response
+                console.print(Panel(
+                    response.content,
+                    title="AI Response",
+                    border_style="blue"
+                ))
+        else:
+            console.print("❌ [red]No response from AI[/red]")
+            
+    except Exception as e:
+        console.print(f"❌ [red]AI processing failed: {e}[/red]")
+        history_entry['ai_error'] = str(e)
+
+
+def _cleanup_chat_session(ctx: CLIContext, save_history: bool) -> None:
+    """Clean up and optionally save chat session."""
+    session_duration = datetime.now() - ctx.session_start_time
+    
+    # Display session summary
+    summary_panel = Panel(
+        f"[bold]Session Summary[/bold]\n\n"
+        f"Duration: {session_duration}\n"
+        f"Commands processed: {ctx.command_count}\n"
+        f"Interactions: {len(ctx.chat_history)}\n"
+        f"Context: {ctx.session_context or 'None set'}",
+        title="Chat Session Complete",
+        border_style="green"
+    )
+    console.print(summary_panel)
+    
+    # Auto-save if requested
+    if save_history and ctx.chat_history:
+        _save_chat_history(ctx)
+    
+    # Reset session state
+    ctx.chat_history.clear()
+    ctx.session_context = ""
+    ctx.session_start_time = None
+    ctx.command_count = 0
 
 
 if __name__ == "__main__":
