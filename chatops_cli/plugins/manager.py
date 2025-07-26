@@ -213,38 +213,78 @@ class PluginManager:
         loaded_count = 0
 
         try:
-            # Create module spec
-            module_name = f"plugin_{plugin_file.stem}_{int(time.time())}"
-            spec = importlib.util.spec_from_file_location(module_name, plugin_file)
+            # For builtin plugins, use proper module import
+            if "builtin" in str(plugin_file):
+                # Extract module name for builtin plugins
+                relative_path = plugin_file.relative_to(Path(__file__).parent.parent)
+                module_parts = list(relative_path.parts[:-1]) + [relative_path.stem]
+                module_name = "chatops_cli." + ".".join(module_parts)
+                
+                try:
+                    self.logger.info(f"Attempting to import builtin plugin: {module_name}")
+                    # Import as a proper module
+                    module = importlib.import_module(module_name)
+                    self.logger.info(f"Successfully imported module: {module_name}")
+                    
+                    # Find plugin classes in the module
+                    plugin_classes = []
+                    for name, obj in inspect.getmembers(module):
+                        if (
+                            inspect.isclass(obj)
+                            and issubclass(obj, BasePlugin)
+                            and obj is not BasePlugin
+                            and not inspect.isabstract(obj)
+                        ):
+                            plugin_classes.append((name, obj))
+                    
+                    self.logger.info(f"Found {len(plugin_classes)} plugin classes: {[name for name, _ in plugin_classes]}")
+                    
+                    for name, obj in plugin_classes:
+                        result = await self._load_plugin_class(obj, plugin_file)
+                        if result:
+                            loaded_count += 1
+                            self.logger.info(f"Successfully loaded plugin class: {name}")
+                        else:
+                            self.logger.error(f"Failed to load plugin class: {name}")
+                    
+                except ImportError as e:
+                    self.logger.error(f"Failed to import builtin plugin {module_name}: {e}")
+                    self.logger.debug(traceback.format_exc())
+                    return 0
+            else:
+                # For external plugins, use file-based loading
+                # Create module spec
+                module_name = f"plugin_{plugin_file.stem}_{int(time.time())}"
+                spec = importlib.util.spec_from_file_location(module_name, plugin_file)
 
-            if spec is None or spec.loader is None:
-                self.logger.warning(f"Could not create module spec for {plugin_file}")
-                return 0
+                if spec is None or spec.loader is None:
+                    self.logger.warning(f"Could not create module spec for {plugin_file}")
+                    return 0
 
-            # Load module
-            module = importlib.util.module_from_spec(spec)
+                # Load module
+                module = importlib.util.module_from_spec(spec)
 
-            # Add to sys.modules temporarily
-            sys.modules[module_name] = module
+                # Add to sys.modules temporarily
+                sys.modules[module_name] = module
 
-            try:
-                spec.loader.exec_module(module)
+                try:
+                    spec.loader.exec_module(module)
 
-                # Find plugin classes in the module
-                for name, obj in inspect.getmembers(module):
-                    if (
-                        inspect.isclass(obj)
-                        and issubclass(obj, BasePlugin)
-                        and obj is not BasePlugin
-                        and not inspect.isabstract(obj)
-                    ):
-                        await self._load_plugin_class(obj, plugin_file)
-                        loaded_count += 1
+                    # Find plugin classes in the module
+                    for name, obj in inspect.getmembers(module):
+                        if (
+                            inspect.isclass(obj)
+                            and issubclass(obj, BasePlugin)
+                            and obj is not BasePlugin
+                            and not inspect.isabstract(obj)
+                        ):
+                            await self._load_plugin_class(obj, plugin_file)
+                            loaded_count += 1
 
-            finally:
-                # Clean up sys.modules
-                if module_name in sys.modules:
-                    del sys.modules[module_name]
+                finally:
+                    # Clean up sys.modules
+                    if module_name in sys.modules:
+                        del sys.modules[module_name]
 
         except Exception as e:
             self.logger.error(f"Error loading plugin file {plugin_file}: {e}")

@@ -382,25 +382,19 @@ def plugin(name: str, version: str, description: str, **kwargs):
             **kwargs,
         }
 
-        # Create metadata property
-        original_metadata = getattr(cls, "metadata", None)
-        if original_metadata and callable(original_metadata):
-            # If metadata is already a method, wrap it
-            original_method = original_metadata
+        # Create metadata property to override the abstract one
+        def metadata_property(self):
+            return PluginMetadata(**metadata_kwargs)
 
-            def new_metadata(self):
-                base_metadata = original_method(self)
-                for key, value in metadata_kwargs.items():
-                    setattr(base_metadata, key, value)
-                return base_metadata
-
-            cls.metadata = property(new_metadata)
-        else:
-            # Create new metadata property
-            def metadata_property(self):
-                return PluginMetadata(**metadata_kwargs)
-
-            cls.metadata = property(metadata_property)
+        # Override the abstract property completely
+        cls.metadata = property(metadata_property)
+        
+        # Remove the abstract method from the class's abstract methods
+        if hasattr(cls, '__abstractmethods__'):
+            cls.__abstractmethods__ = frozenset(
+                method for method in cls.__abstractmethods__ 
+                if method != 'metadata'
+            )
 
         return cls
 

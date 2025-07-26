@@ -127,7 +127,7 @@ def ask(
             transient=True,
         ) as progress:
             # Initialize plugin manager if not already done
-            if not hasattr(ctx.plugin_manager, "_plugins"):
+            if not ctx.plugin_manager._plugins:
                 task = progress.add_task("Initializing plugins...", total=None)
                 success = asyncio.run(
                     ctx.plugin_manager.initialize({"hot_reload": ctx.debug})
@@ -468,7 +468,7 @@ def plugins(
     """
     try:
         # Initialize plugin manager if needed
-        if not hasattr(ctx.plugin_manager, "_plugins"):
+        if not ctx.plugin_manager._plugins:
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
