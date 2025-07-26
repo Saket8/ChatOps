@@ -143,6 +143,15 @@ class LLMPlugin(CommandPlugin):
         if any(cmd in user_input_lower for cmd in system_commands):
             return False
 
+        # Priority check: If it starts with explanatory keywords, this plugin should handle it
+        explanatory_starters = [
+            "explain", "what is", "how does", "tell me about", "describe",
+            "help me understand", "teach me about", "show me how"
+        ]
+        
+        if any(user_input_lower.startswith(starter) for starter in explanatory_starters):
+            return True
+
         return any(keyword in user_input_lower for keyword in ai_keywords + conversation_starters)
 
     async def generate_command(

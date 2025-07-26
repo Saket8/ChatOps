@@ -354,6 +354,12 @@ def chat(
             console=console,
             transient=True,
         ) as progress:
+            # Initialize core components if not already done
+            if not ctx.langchain:
+                ctx.langchain = LangChainIntegration()
+            if not ctx.command_executor:
+                ctx.command_executor = CommandExecutor()
+                
             # Initialize plugin manager
             if not ctx.plugin_manager._plugins:
                 task = progress.add_task("Initializing plugins...", total=None)
@@ -790,20 +796,14 @@ async def _execute_command(command: DevOpsCommand, ctx: CLIContext, verbose: boo
         return click.confirm("\nDo you want to proceed with execution?")
     
     try:
-        # Execute command using CommandExecutor
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-            transient=True,
-        ) as progress:
-            task = progress.add_task("Executing command...", total=None)
-            
-            result = await ctx.command_executor.execute_command(
-                command,
-                execution_context,
-                confirm_execution
-            )
+        # Execute command using CommandExecutor (without nested Progress)
+        console.print("[dim]Executing command...[/dim]")
+        
+        result = await ctx.command_executor.execute_command(
+            command,
+            execution_context,
+            confirm_execution
+        )
         
         # Display results
         _display_execution_result(result, verbose)
@@ -1199,23 +1199,29 @@ def _fallback_to_ai(context_prompt: str, ctx: CLIContext, history_entry: dict[st
             # Try to parse as command
             try:
                 command = ctx.langchain.parse_llm_response(response.content)
-                history_entry['command_generated'] = command.command
                 
-                # Display and potentially execute
-                _display_command(command, False, ctx.verbose)
-                
-                if _confirm_command_execution():
-                    asyncio.run(_execute_command(command, ctx, ctx.verbose))
-                    history_entry['executed'] = True
-                else:
-                    history_entry['executed'] = False
-                    console.print("[yellow]Command execution skipped[/yellow]")
+                # Check if we got a valid command (not just a fallback)
+                if command and command.command and command.command != "command":
+                    history_entry['command_generated'] = command.command
                     
-            except Exception:
+                    # Display and potentially execute
+                    _display_command(command, False, ctx.verbose)
+                    
+                    if _confirm_command_execution():
+                        asyncio.run(_execute_command(command, ctx, ctx.verbose))
+                        history_entry['executed'] = True
+                    else:
+                        history_entry['executed'] = False
+                        console.print("[yellow]Command execution skipped[/yellow]")
+                else:
+                    # Invalid command, treat as explanation
+                    raise ValueError("Invalid command structure")
+                    
+            except Exception as e:
                 # If not a command, just show the AI response
                 console.print(Panel(
                     response.content,
-                    title="AI Response",
+                    title="🤖 AI Response",
                     border_style="blue"
                 ))
         else:

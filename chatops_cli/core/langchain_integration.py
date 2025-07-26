@@ -427,6 +427,30 @@ Provide JSON response:
                 risk_level=RiskLevel.SAFE,
             )
 
+    def generate_prompt(self, user_input: str, context: str = "") -> str:
+        """
+        Generate a prompt string for LLM processing.
+
+        Args:
+            user_input: Natural language description of what to do
+            context: Additional context about the system or situation
+
+        Returns:
+            Formatted prompt string for LLM
+        """
+        try:
+            # Format the prompt
+            prompt = self.command_template.format(
+                user_input=user_input, context=context or "Linux/Unix system"
+            )
+
+            self.logger.debug(f"Generated prompt for: {user_input}")
+            return prompt
+
+        except Exception as e:
+            self.logger.error(f"Failed to generate prompt: {e}")
+            return f"Please help with: {user_input}"
+
     def parse_llm_response(self, llm_response: str) -> DevOpsCommand:
         """
         Parse LLM response into structured DevOpsCommand.

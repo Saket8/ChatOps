@@ -692,6 +692,25 @@ class PluginManager:
             PluginCapability.COMMAND_GENERATION
         )
 
+        # Check for explanatory requests first (LLM plugin should handle these)
+        user_input_lower = user_input.lower()
+        explanatory_starters = [
+            "explain", "what is", "how does", "tell me about", "describe",
+            "help me understand", "teach me about", "show me how"
+        ]
+        
+        is_explanatory = any(user_input_lower.startswith(starter) for starter in explanatory_starters)
+        
+        # If it's an explanatory request, prioritize LLM plugin
+        if is_explanatory:
+            for plugin in command_plugins:
+                if plugin.metadata.name == "llm" and plugin.can_handle(user_input, context):
+                    plugin_name = plugin.metadata.name
+                    if plugin_name in self._plugins:
+                        self._plugins[plugin_name].last_used = datetime.now()
+                    return plugin
+
+        # Otherwise, check all plugins in order
         for plugin in command_plugins:
             if plugin.can_handle(user_input, context):
                 # Update last used time
