@@ -6,25 +6,18 @@ Offline ChatOps CLI with LangChain + Local LLM
 
 A Python-based command-line assistant designed for DevOps and Cloud engineers who need to perform system administration tasks through natural language commands. The tool provides both **offline plugin-based commands** for speed and **AI-powered command generation** for complex scenarios, featuring comprehensive cross-platform support for Windows PowerShell, Linux, and macOS.
 
-**Key Architecture Highlights:**
-- **Hybrid Command Generation**: Fast local plugins + smart AI fallback
-- **Cross-Platform Intelligence**: Automatic OS detection with appropriate command mapping
-- **Extensible Plugin System**: Modular architecture for custom command handlers
-- **Multiple LLM Backends**: Groq API (fast, free) + Local Ollama support
-- **TaskMaster Integration**: Comprehensive project management and progress tracking
+**Key Features:**
+- **Hybrid Command Generation**: Fast local plugins for common tasks + smart AI for complex scenarios
+- **Cross-Platform Intelligence**: Automatically generates Windows PowerShell, Linux, or macOS commands
+- **Extensible Plugin System**: Add new command categories and specialized operations
+- **Multiple LLM Backends**: Choose between fast cloud API or private local models
+- **Natural Language Interface**: Ask questions in plain English, get executable commands
 
 ## Project Status
 
-🚀 **Active Development** - Plugin Architecture Complete! (Task 6/15 ✅)
+🚀 **Active Development** - Core functionality implemented and working
 
-**Current Progress: 6/15 Tasks Complete (40%)**
-- ✅ Foundation & Dependencies
-- ✅ LangChain Integration  
-- ✅ CLI Framework
-- ✅ **Plugin Architecture Design** (Just Completed!)
-- 🎯 **Next**: Command Executor Service (Task 8)
-
-📊 **Live Dashboard**: [https://saket8.github.io/ChatOps/](https://saket8.github.io/ChatOps/)
+📊 **Project Dashboard**: [https://saket8.github.io/ChatOps/](https://saket8.github.io/ChatOps/)
 
 ## Features
 
@@ -160,32 +153,20 @@ python -m poetry run python -m chatops_cli ask "help"
 python -m poetry run python -m chatops_cli ask "find files larger than 100MB" --dry-run
 ```
 
-### **Development Workflow**
-
-This project uses **TaskMaster** for project management:
+### **Quick Start**
 
 ```bash
-# View current tasks and progress
-task-master list
+# Basic usage - works without AI setup
+python -m poetry run python -m chatops_cli plugins --list
 
-# Get next task to work on  
-task-master next
-
-# View specific task details
-task-master show 8
-
-# Update task status
-task-master set-status --id=8 --status=in-progress
+# With AI integration (requires API key)
+python -m poetry run python -m chatops_cli ask "check disk usage" --dry-run
 ```
 
 ## Project Structure
 
 ```
 ChatOps/
-├── .taskmaster/                 # TaskMaster project management
-│   ├── tasks/tasks.json        # Task definitions and status
-│   ├── dashboard.html          # Project dashboard  
-│   └── config.json             # TaskMaster configuration
 ├── chatops_cli/                # Main application package
 │   ├── cli/main.py            # CLI interface & Click commands
 │   ├── core/                  # Core functionality
@@ -210,29 +191,24 @@ ChatOps/
 ## Testing
 
 ```bash
-# Test plugin system
-python test_plugin_system.py
+# Test plugin system (offline)
+python -m poetry run python -m chatops_cli plugins --list
 
-# Test Groq integration  
-python test_groq.py
+# Test command generation (requires API key)
+python -m poetry run python -m chatops_cli ask "show running processes" --dry-run
 
-# Test cross-platform commands
-python test_windows_commands.py
-
-# Run full test suite (coming in Task 13)
+# Run full test suite (coming soon)
 python -m pytest
 ```
 
 ## Contributing
 
-### **Development Process**
+### **How to Contribute**
 
-1. **Check TaskMaster Dashboard**: [https://saket8.github.io/ChatOps/](https://saket8.github.io/ChatOps/)
-2. **Pick Next Task**: Use `task-master next` to see available tasks
-3. **Create Feature Branch**: `git checkout -b feature/task-X-description`
-4. **Implement & Test**: Follow task requirements and test strategy
-5. **Update Task Status**: Mark progress using `task-master set-status`
-6. **Submit PR**: Include task completion evidence
+1. **Fork the repository** and create a feature branch
+2. **Implement your changes**: Bug fixes, new plugins, or improvements
+3. **Test thoroughly**: Ensure cross-platform compatibility
+4. **Submit a Pull Request**: Include clear description and test examples
 
 ### **Architecture Guidelines**
 
@@ -244,19 +220,16 @@ python -m pytest
 
 ## Roadmap
 
-### **Immediate (Next 2 Tasks)**
-- **Task 8**: Command Executor Service with validation and sandboxing
-- **Task 9**: Interactive Chat Mode for conversational commands
+### **Coming Soon**
+- **Docker Plugin**: Container management and operations
+- **Interactive Chat Mode**: Conversational command interface
+- **Command Validation**: Dry-run mode and safety features
 
-### **Short Term (Tasks 10-12)**  
-- **Configuration Management**: Advanced settings and profiles
-- **Logging & Audit System**: Comprehensive command tracking
-- **Safety & Security Features**: Command validation and rollback
-
-### **Medium Term (Tasks 13-15)**
-- **Testing Framework**: Automated testing infrastructure  
-- **CI/CD Pipeline**: GitHub Actions automation
-- **Documentation & Examples**: Comprehensive user guides
+### **Future Features**  
+- **Advanced Configuration**: Custom profiles and settings
+- **Audit Logging**: Track all commands and operations
+- **Command Rollback**: Undo operations safely
+- **More Plugins**: Kubernetes, AWS, GCP integrations
 
 ## License
 
@@ -264,4 +237,4 @@ MIT License
 
 ---
 
-**Dashboard**: [https://saket8.github.io/ChatOps/](https://saket8.github.io/ChatOps/) | **Repository**: [GitHub](https://github.com/Saket8/ChatOps) | **TaskMaster**: Comprehensive project management integrated 
+**Dashboard**: [https://saket8.github.io/ChatOps/](https://saket8.github.io/ChatOps/) | **Repository**: [GitHub](https://github.com/Saket8/ChatOps) 
