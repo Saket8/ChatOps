@@ -10,6 +10,7 @@ import sys
 import logging
 import asyncio
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 
 # Try to import readline, but make it optional (not available on Windows)
@@ -770,7 +771,7 @@ async def _execute_command(command: DevOpsCommand, ctx: CLIContext, verbose: boo
     
     # Create execution context
     execution_context = ExecutionContext(
-        working_directory=Path.cwd(),
+        working_directory=Path.cwd(), 
         environment_vars={},
         timeout_seconds=60,
         dry_run=False,

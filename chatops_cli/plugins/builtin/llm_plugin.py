@@ -127,11 +127,21 @@ class LLMPlugin(CommandPlugin):
             "create", "build", "design", "optimize", "fix"
         ]
 
-        # Check for conversation starters
+        # Check for conversation starters (but exclude system commands)
         conversation_starters = [
             "tell me", "can you", "please", "i need", "help with",
-            "show me", "teach me", "explain", "what is", "how do"
+            "teach me", "explain", "what is", "how do"
         ]
+        
+        # Don't catch system commands that start with "show"
+        system_commands = [
+            "show memory", "show disk", "show cpu", "show process", 
+            "show system", "show network", "show available", "show running"
+        ]
+        
+        # If it's a system command, let the system plugin handle it
+        if any(cmd in user_input_lower for cmd in system_commands):
+            return False
 
         return any(keyword in user_input_lower for keyword in ai_keywords + conversation_starters)
 

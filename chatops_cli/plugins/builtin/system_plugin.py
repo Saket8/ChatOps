@@ -57,10 +57,15 @@ class SystemPlugin(CommandPlugin):
             r".*system\s+info.*",
             r".*disk\s+usage.*",
             r".*memory\s+usage.*",
+            r".*available\s+memory.*",
+            r".*ram\s+usage.*",
             r".*cpu\s+usage.*",
             r".*process.*list.*",
             r".*check\s+.*space.*",
             r".*show\s+.*info.*",
+            r".*show\s+.*memory.*",
+            r".*show\s+.*disk.*",
+            r".*show\s+.*cpu.*",
             r".*system\s+status.*",
             r".*uptime.*",
             r".*network\s+info.*",
@@ -89,28 +94,36 @@ class SystemPlugin(CommandPlugin):
         """Check if this plugin can handle the user input"""
         user_input_lower = user_input.lower()
 
-        # Check against command patterns
+        # Check against command patterns first (more specific)
         for pattern in self._command_patterns:
             if re.search(pattern, user_input_lower):
                 return True
 
-        # Check for system-related keywords
-        system_keywords = [
-            "system",
-            "disk",
-            "memory",
-            "cpu",
-            "process",
-            "uptime",
-            "space",
-            "usage",
-            "info",
-            "status",
-            "network",
-            "hardware",
+        # Check for specific system command keywords (higher priority)
+        specific_system_keywords = [
+            "disk usage", "disk space", "memory usage", "available memory",
+            "cpu usage", "process list", "running processes", "system info",
+            "network info", "uptime", "hardware info"
+        ]
+        
+        if any(keyword in user_input_lower for keyword in specific_system_keywords):
+            return True
+
+        # Check for general system-related keywords (lower priority)
+        general_system_keywords = [
+            "system", "disk", "memory", "cpu", "process", "uptime", 
+            "space", "usage", "info", "status", "network", "hardware"
         ]
 
-        return any(keyword in user_input_lower for keyword in system_keywords)
+        # Only return True if the input is clearly system-related
+        # and doesn't contain AI/conversation keywords
+        ai_keywords = ["ai", "chat", "explain", "help", "how", "what", "why", "tell me", "can you"]
+        has_ai_keywords = any(keyword in user_input_lower for keyword in ai_keywords)
+        
+        if has_ai_keywords:
+            return False
+            
+        return any(keyword in user_input_lower for keyword in general_system_keywords)
 
     async def generate_command(
         self, user_input: str, context: Dict[str, Any] = None
@@ -154,17 +167,18 @@ class SystemPlugin(CommandPlugin):
         # Memory usage
         elif any(
             keyword in user_input_lower
-            for keyword in ["memory usage", "ram usage", "memory info"]
+            for keyword in ["memory usage", "ram usage", "memory info", "available memory", "show memory"]
         ):
+            os_command = os_detection.map_command("memory_usage")
             return DevOpsCommand(
-                command="free -h && cat /proc/meminfo | head -10",
-                description="Show memory usage and detailed memory information",
+                command=os_command,
+                description=f"Show memory usage and available memory for {os_detection.get_os_info().name} system",
                 command_type=CommandType.SYSTEM_INFO,
                 risk_level=RiskLevel.SAFE,
                 requires_sudo=False,
                 estimated_duration="< 1 second",
-                prerequisites=["free", "cat"],
-                alternative_commands=["vmstat", "top -n 1 | head -5"],
+                prerequisites=[],  # OS-specific commands handled internally
+                alternative_commands=[],
             )
 
         # CPU usage
