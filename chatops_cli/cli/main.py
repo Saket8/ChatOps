@@ -9,9 +9,8 @@ with command groups, global options, and integration with our core components.
 import sys
 import logging
 import asyncio
-from pathlib import Path
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any, Optional
 
 # Try to import readline, but make it optional (not available on Windows)
 try:
@@ -24,7 +23,6 @@ import click
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt
 
@@ -41,21 +39,21 @@ console = Console()
 
 # Global context for CLI state
 class CLIContext:
-    def __init__(self):
+    def __init__(self) -> None:
         self.debug = False
         self.verbose = False
-        self.config_file = None
-        self.groq_client = None
-        self.langchain = None
-        self.plugin_manager = None
-        self.command_executor = None
+        self.config_file: Optional[str] = None
+        self.groq_client: Optional[GroqClient] = None
+        self.langchain: Optional[LangChainIntegration] = None
+        self.plugin_manager: Optional[PluginManager] = None
+        self.command_executor: Optional[CommandExecutor] = None
         # Interactive session state
-        self.chat_history: List[Dict[str, Any]] = []
+        self.chat_history: list[dict[str, Any]] = []
         self.session_context: str = ""
         self.session_start_time: Optional[datetime] = None
         self.command_count: int = 0
 
-    def setup_logging(self):
+    def setup_logging(self) -> None:
         """Setup logging based on debug/verbose flags"""
         level = (
             logging.DEBUG
@@ -459,7 +457,7 @@ def explain(ctx: CLIContext, command: str):
             progress.update(task, description="Generating explanation...")
 
             response = asyncio.run(
-                ctx.ollama_client.generate_response(
+                ctx.groq_client.generate_response( # Changed from ctx.ollama_client to ctx.groq_client
                     prompt=prompt, max_tokens=300, temperature=0.2
                 )
             )
@@ -516,10 +514,10 @@ def status(ctx: CLIContext):
     # Check models
     if connected:
         try:
-            models = ctx.ollama_client.list_models()
+            models = ctx.groq_client.list_models() # Changed from ctx.ollama_client to ctx.groq_client
             model_count = len(models)
             working_models = sum(
-                1 for m in models if ctx.ollama_client._test_model_memory(m.name)
+                1 for m in models if ctx.groq_client._test_model_memory(m.name) # Changed from ctx.ollama_client to ctx.groq_client
             )
             model_details = f"{working_models}/{model_count} models can run"
         except:
@@ -556,7 +554,7 @@ def status(ctx: CLIContext):
 
         for model in models:
             status_emoji = (
-                "✅" if ctx.ollama_client._test_model_memory(model.name) else "⚠️"
+                "✅" if ctx.groq_client._test_model_memory(model.name) else "⚠️" # Changed from ctx.ollama_client to ctx.groq_client
             )
             status_text = "Ready" if status_emoji == "✅" else "Memory Issue"
             model_table.add_row(model.name, model.size, f"{status_emoji} {status_text}")
@@ -662,7 +660,7 @@ def plugins(
 
             for plugin_name, info in status_info.items():
                 status_color = "green" if info["status"] == "active" else "red"
-                console.print(f"\n🔌 [bold]{plugin_name}[/bold] v{info['version']}")
+                console.print(f"\n�� [bold]{plugin_name}[/bold] v{info['version']}")
                 console.print(
                     f"   Status: [{status_color}]{info['status']}[/{status_color}]"
                 )
@@ -1095,19 +1093,19 @@ def _process_chat_input(user_input: str, ctx: CLIContext, model: Optional[str]) 
                         ai_response = asyncio.run(handler_plugin.process_llm_request(user_input, plugin_context))
                         history_entry['plugin_used'] = handler_plugin.metadata.name
                         history_entry['ai_response'] = ai_response
-                        
+
                         # Display AI response directly
                         console.print(Panel(
                             ai_response,
                             title="🤖 AI Response",
                             border_style="blue"
                         ))
-                        
+
                     except Exception as e:
                         console.print(f"❌ [red]AI processing failed: {e}[/red]")
                         history_entry['ai_error'] = str(e)
                         _fallback_to_ai(context_prompt, ctx, history_entry, model)
-                        
+
                 else:
                     # Regular plugin handling for command generation
                     command = asyncio.run(
@@ -1117,11 +1115,11 @@ def _process_chat_input(user_input: str, ctx: CLIContext, model: Optional[str]) 
                     if command:
                         history_entry['plugin_used'] = handler_plugin.metadata.name
                         history_entry['command_generated'] = command.command
-                        
+
                         # Validate and display command
                         if asyncio.run(handler_plugin.validate_command(command, plugin_context)):
                             _display_command(command, False, ctx.verbose)
-                            
+
                             # Ask for confirmation in chat mode
                             if _confirm_command_execution():
                                 asyncio.run(_execute_command(command, ctx, ctx.verbose))
@@ -1140,7 +1138,7 @@ def _process_chat_input(user_input: str, ctx: CLIContext, model: Optional[str]) 
                 if ctx.verbose:
                     console.print("[dim]No plugin found, using AI...[/dim]")
                 _fallback_to_ai(context_prompt, ctx, history_entry, model)
-                
+
     except Exception as e:
         console.print(f"❌ [red]Error processing request: {e}[/red]")
         if ctx.debug:
@@ -1185,7 +1183,7 @@ def _confirm_command_execution() -> bool:
         return False
 
 
-def _fallback_to_ai(context_prompt: str, ctx: CLIContext, history_entry: Dict[str, Any], model: Optional[str]) -> None:
+def _fallback_to_ai(context_prompt: str, ctx: CLIContext, history_entry: dict[str, Any], model: Optional[str]) -> None:
     """Fallback to AI when plugins can't handle the request."""
     try:
         # Generate prompt using LangChain with chat context

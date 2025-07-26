@@ -7,7 +7,7 @@ code generation, explanations, and general AI assistance beyond command generati
 
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from ..base import (
     CommandPlugin,
@@ -15,9 +15,9 @@ from ..base import (
     PluginPriority,
     plugin,
 )
-from ...core.langchain_integration import DevOpsCommand, CommandType, RiskLevel
-from ...core.ollama_client import OllamaClient
 from ...core.groq_client import GroqClient
+from ...core.langchain_integration import CommandType, DevOpsCommand, RiskLevel
+from ...core.ollama_client import OllamaClient
 from ...core.os_detection import os_detection
 
 
@@ -42,7 +42,7 @@ class LLMPlugin(CommandPlugin):
     - Multi-turn conversations with context
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._capabilities.extend([
             PluginCapability.COMMAND_GENERATION,
@@ -111,7 +111,7 @@ class LLMPlugin(CommandPlugin):
         self.logger.info("LLM plugin cleanup complete")
         return True
 
-    def can_handle(self, user_input: str, context: Dict[str, Any] = None) -> bool:
+    def can_handle(self, user_input: str, context: Optional[dict[str, Any]] = None) -> bool:
         """Check if this plugin can handle the user input"""
         user_input_lower = user_input.lower()
 
@@ -136,7 +136,7 @@ class LLMPlugin(CommandPlugin):
         return any(keyword in user_input_lower for keyword in ai_keywords + conversation_starters)
 
     async def generate_command(
-        self, user_input: str, context: Dict[str, Any] = None
+        self, user_input: str, context: Optional[dict[str, Any]] = None
     ) -> Optional[DevOpsCommand]:
         """Generate LLM response command from natural language input"""
         user_input_lower = user_input.lower()
@@ -282,7 +282,7 @@ class LLMPlugin(CommandPlugin):
             alternative_commands=["Be more specific", "Ask follow-up questions"]
         )
 
-    async def process_llm_request(self, user_input: str, context: Dict[str, Any] = None) -> str:
+    async def process_llm_request(self, user_input: str, context: Optional[dict[str, Any]] = None) -> str:
         """Process LLM request and return response"""
         try:
             # Add to conversation history
@@ -339,7 +339,7 @@ class LLMPlugin(CommandPlugin):
             return f"Error processing AI request: {str(e)}"
 
     async def validate_command(
-        self, command: DevOpsCommand, context: Dict[str, Any] = None
+        self, command: DevOpsCommand, context: Optional[dict[str, Any]] = None
     ) -> bool:
         """Validate LLM commands (all are safe by design)"""
         return True
@@ -405,7 +405,7 @@ Examples:
 ⚙️ Prerequisites: Ollama or Groq API configured
         """.strip()
 
-    async def get_metrics(self, context: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def get_metrics(self, context: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         """Get LLM plugin metrics"""
         try:
             ollama_available = bool(self._ollama_client and await self._ollama_client.test_connection())
@@ -431,6 +431,6 @@ Examples:
         self._conversation_history = []
         self.logger.info("Conversation history cleared")
 
-    def get_history(self) -> List[Dict[str, str]]:
+    def get_history(self) -> list[dict[str, str]]:
         """Get conversation history"""
         return self._conversation_history.copy() 
