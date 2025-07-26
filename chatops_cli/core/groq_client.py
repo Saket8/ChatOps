@@ -12,7 +12,8 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
-from ..config import settings
+from ..settings import settings
+from .os_detection import os_detection
 
 
 @dataclass
@@ -82,7 +83,7 @@ class GroqClient:
     ) -> GroqResponse:
         """
         Generate response using Groq API.
-        
+
         Args:
             prompt: User prompt/question
             system_prompt: Optional system prompt for context
@@ -102,12 +103,24 @@ class GroqClient:
                 )
         
         try:
-            # Prepare messages
+            # Prepare messages with OS-aware system prompt
             messages = []
             
-            if system_prompt:
-                messages.append(SystemMessage(content=system_prompt))
-            
+            # Enhanced system prompt with OS information
+            os_info = os_detection.get_os_info()
+            enhanced_system_prompt = f"""You are a DevOps assistant for {os_info.name.upper()} systems.
+
+Operating System: {os_info.name} ({os_info.version})
+Shell: {os_info.shell}
+Platform: {"Windows PowerShell" if os_info.is_windows else "Unix/Linux Terminal"}
+
+CRITICAL: Always provide commands appropriate for {os_info.name}:
+- Windows: Use PowerShell commands (Get-Process, Get-WmiObject, Get-ChildItem, etc.)
+- Linux/macOS: Use bash commands (ps, df, ls, etc.)
+
+{system_prompt if system_prompt else "Generate appropriate shell commands for the detected OS."}"""
+
+            messages.append(SystemMessage(content=enhanced_system_prompt))
             messages.append(HumanMessage(content=prompt))
             
             # Update client settings if overrides provided

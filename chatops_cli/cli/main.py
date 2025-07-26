@@ -19,7 +19,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from ..config import settings
+from ..settings import settings
 from ..core.groq_client import GroqClient, GroqResponse
 from ..core.langchain_integration import LangChainIntegration, DevOpsCommand, RiskLevel
 from ..plugins import PluginManager
@@ -206,9 +206,9 @@ def ask(
 
             connected = asyncio.run(ctx.ollama_client.connect())
             if not connected:
-                console.print("❌ [red]Failed to connect to Ollama service[/red]")
+                console.print("❌ [red]Failed to connect to Groq API[/red]")
                 console.print(
-                    "💡 [yellow]Make sure Ollama is running: ollama serve[/yellow]"
+                    "💡 [yellow]Check your GROQ_API_KEY in .env file[/yellow]"
                 )
                 sys.exit(1)
 
@@ -225,13 +225,10 @@ def ask(
             # Get response from Ollama
             progress.update(task, description="Waiting for AI response...")
 
-            response = asyncio.run(
-                ctx.ollama_client.generate_response(
-                    prompt=prompt,
-                    model=model,
-                    max_tokens=200 if explain else 100,
-                    temperature=0.1,
-                )
+            response = await ctx.groq_client.generate_response(
+                prompt=prompt,
+                max_tokens=200 if explain else 100,
+                temperature=0.1,
             )
 
         if not response.success:

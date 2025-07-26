@@ -22,6 +22,7 @@ from ..base import (
     plugin,
 )
 from ...core.langchain_integration import DevOpsCommand, CommandType, RiskLevel
+from ...core.os_detection import os_detection
 
 
 @plugin(
@@ -138,15 +139,16 @@ class SystemPlugin(CommandPlugin):
             keyword in user_input_lower
             for keyword in ["disk usage", "disk space", "check space"]
         ):
+            os_command = os_detection.map_command("disk_usage")
             return DevOpsCommand(
-                command="df -h",
-                description="Show disk usage for all mounted filesystems",
+                command=os_command,
+                description=f"Show disk usage for {os_detection.get_os_info().name} system",
                 command_type=CommandType.SYSTEM_INFO,
                 risk_level=RiskLevel.SAFE,
                 requires_sudo=False,
-                estimated_duration="< 1 second",
-                prerequisites=["df"],
-                alternative_commands=["du -sh /*", "lsblk"],
+                estimated_duration="< 2 seconds",
+                prerequisites=[],  # OS-specific commands handled internally
+                alternative_commands=[],
             )
 
         # Memory usage
@@ -186,15 +188,16 @@ class SystemPlugin(CommandPlugin):
             keyword in user_input_lower
             for keyword in ["process list", "running processes", "show processes"]
         ):
+            os_command = os_detection.map_command("list_processes")
             return DevOpsCommand(
-                command="ps aux | head -20",
-                description="Show list of running processes",
+                command=os_command,
+                description=f"Show list of running processes on {os_detection.get_os_info().name}",
                 command_type=CommandType.PROCESS_MANAGEMENT,
                 risk_level=RiskLevel.SAFE,
                 requires_sudo=False,
-                estimated_duration="< 1 second",
-                prerequisites=["ps"],
-                alternative_commands=["pstree", "top -n 1"],
+                estimated_duration="< 2 seconds",
+                prerequisites=[],  # OS-specific commands handled internally
+                alternative_commands=[],
             )
 
         # Uptime

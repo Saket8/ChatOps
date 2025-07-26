@@ -82,12 +82,12 @@
         </div>
         
         <div class="dashboard-container">
-            <iframe src=".taskmaster/dashboard.html" title="Project Dashboard"></iframe>
+            <iframe src="dashboard.html" title="Project Dashboard"></iframe>
         </div>
         
         <div class="links">
-            <a href=".taskmaster/dashboard.html" class="btn" target="_blank">📊 Full Dashboard</a>
-            <a href=".taskmaster/DASHBOARD.md" class="btn secondary" target="_blank">📋 Markdown View</a>
+            <a href="dashboard.html" class="btn" target="_blank">📊 Full Dashboard</a>
+            <a href="https://github.com/Saket8/ChatOps/blob/master/README.md" class="btn secondary" target="_blank">📋 Readme</a>
             <a href="https://github.com/Saket8/ChatOps" class="btn" target="_blank">📁 View Source</a>
         </div>
     </div>
@@ -97,7 +97,7 @@
         setTimeout(() => {
             const iframe = document.querySelector('iframe');
             iframe.onerror = () => {
-                window.location.href = '.taskmaster/dashboard.html';
+                window.location.href = 'dashboard.html';
             };
         }, 3000);
     </script>
