@@ -1,0 +1,80 @@
+color_output: true
+current_profile: default
+debug_mode: false
+default_llm_provider: groq
+execution_timeout: 60
+groq:
+  base_url: null
+  enabled: true
+  max_tokens: 1000
+  model: llama3-8b-8192
+  name: groq
+  temperature: 0.1
+  timeout: 30
+logging:
+  file_logging: true
+  include_timestamps: true
+  level: INFO
+  log_commands: true
+  log_directory: .chatops_logs
+  log_errors: true
+  log_retention_days: 30
+  max_log_size: 10485760
+max_concurrent_commands: 3
+ollama:
+  base_url: http://localhost:11434
+  enabled: true
+  max_tokens: 1000
+  model: mistral:7b
+  name: ollama
+  temperature: 0.1
+  timeout: 30
+plugins:
+  auto_discovery: true
+  disabled_plugins: []
+  enabled_plugins: []
+  hot_reload: false
+  plugin_directories:
+  - plugins/builtin
+profiles:
+  development:
+    debug_mode: true
+    groq:
+      model: llama3-8b-8192
+      temperature: 0.2
+    logging:
+      level: DEBUG
+    verbose_mode: true
+  production:
+    debug_mode: false
+    groq:
+      model: llama3-70b-8192
+      temperature: 0.1
+    logging:
+      level: WARNING
+    security:
+      require_confirmation: true
+      safe_mode: true
+    verbose_mode: false
+  testing:
+    debug_mode: true
+    logging:
+      level: DEBUG
+      log_commands: true
+    security:
+      dry_run_default: true
+    verbose_mode: true
+progress_bars: true
+rich_output: true
+security:
+  allowed_domains: []
+  blocked_commands:
+  - rm -rf /
+  - 'format c:'
+  command_validation: true
+  dry_run_default: false
+  max_command_length: 1000
+  require_confirmation: true
+  safe_mode: true
+verbose_mode: false
+working_directory: null

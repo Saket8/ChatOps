@@ -572,26 +572,186 @@ def status(ctx: CLIContext):
 @cli.command()
 @pass_context
 def examples(ctx: CLIContext):
-    """
-    Show example commands and usage patterns.
-    """
-    console.print(
-        Panel("[bold green]ChatOps CLI Examples[/bold green]", border_style="green")
-    )
+    """Show example commands and usage patterns"""
+    console.print(Panel.fit(
+        "[bold blue]ChatOps CLI Examples[/bold blue]\n\n"
+        "[green]Basic Commands:[/green]\n"
+        "  chatops ask 'check disk space'\n"
+        "  chatops ask 'restart nginx service'\n"
+        "  chatops ask 'show running containers'\n\n"
+        "[green]Interactive Mode:[/green]\n"
+        "  chatops chat\n"
+        "  chatops chat --model llama3-8b-8192\n\n"
+        "[green]Command Explanation:[/green]\n"
+        "  chatops explain 'docker ps -a'\n"
+        "  chatops explain 'kubectl get pods'\n\n"
+        "[green]Plugin Management:[/green]\n"
+        "  chatops plugins --list\n"
+        "  chatops plugins --status\n"
+        "  chatops plugins --help-plugin docker\n\n"
+        "[green]Configuration:[/green]\n"
+        "  chatops config --validate\n"
+        "  chatops config --export-template\n"
+        "  chatops config --save-profile production\n\n"
+        "[green]Advanced Options:[/green]\n"
+        "  chatops --verbose ask 'analyze system performance'\n"
+        "  chatops --debug ask 'troubleshoot network issues'\n"
+        "  chatops ask --dry-run 'delete old log files'",
+        title="[bold cyan]Example Commands[/bold cyan]"
+    ))
 
-    # Get examples from LangChain integration
-    examples = ctx.langchain.get_command_examples()
 
-    for category, commands in examples.items():
-        console.print(f"\n[bold cyan]{category.replace('_', ' ').title()}[/bold cyan]")
+@cli.group()
+@pass_context
+def config(ctx: CLIContext):
+    """Configuration management commands"""
+    pass
 
-        for cmd in commands:
-            console.print(
-                f"  [dim]Ask:[/dim] [yellow]chatops ask \"{cmd['input']}\"[/yellow]"
-            )
-            console.print(f"  [dim]Gets:[/dim] [green]{cmd['command']}[/green]")
-            console.print(f"  [dim]Does:[/dim] {cmd['description']}")
-            console.print()
+
+@config.command()
+@click.option("--format", "output_format", type=click.Choice(["json", "yaml"]), default="json", help="Output format")
+@click.option("--output", "-o", type=click.Path(), help="Output file path")
+@pass_context
+def export(ctx: CLIContext, output_format: str, output: Optional[str]):
+    """Export current configuration to file"""
+    try:
+        output_path = Path(output) if output else None
+        settings.save_config(output_path, output_format)
+        
+        if output_path:
+            console.print(f"✅ Configuration exported to: {output_path}")
+        else:
+            console.print(f"✅ Configuration exported to: chatops_config.{output_format}")
+            
+    except Exception as e:
+        console.print(f"❌ Failed to export configuration: {e}")
+
+
+@config.command()
+@pass_context
+def validate(ctx: CLIContext):
+    """Validate current configuration"""
+    issues = settings.validate_configuration()
+    
+    if not issues:
+        console.print("✅ Configuration is valid")
+        return
+    
+    console.print("[bold red]Configuration Issues Found:[/bold red]")
+    for issue in issues:
+        console.print(f"  • {issue}")
+
+
+@config.command()
+@click.option("--output", "-o", type=click.Path(), help="Output file path")
+@pass_context
+def export_template(ctx: CLIContext, output: Optional[str]):
+    """Export environment variable template"""
+    try:
+        output_path = Path(output) if output else None
+        settings.export_env_template(output_path)
+        
+        if output_path:
+            console.print(f"✅ Environment template exported to: {output_path}")
+        else:
+            console.print("✅ Environment template exported to: .env.template")
+            
+    except Exception as e:
+        console.print(f"❌ Failed to export template: {e}")
+
+
+@config.command()
+@click.argument("profile_name")
+@pass_context
+def save_profile(ctx: CLIContext, profile_name: str):
+    """Save current settings as a named profile"""
+    try:
+        settings.save_profile(profile_name)
+        console.print(f"✅ Profile '{profile_name}' saved successfully")
+    except Exception as e:
+        console.print(f"❌ Failed to save profile: {e}")
+
+
+@config.command()
+@click.argument("profile_name")
+@pass_context
+def load_profile(ctx: CLIContext, profile_name: str):
+    """Load a named configuration profile"""
+    try:
+        if settings.load_profile(profile_name):
+            console.print(f"✅ Profile '{profile_name}' loaded successfully")
+        else:
+            console.print(f"❌ Profile '{profile_name}' not found")
+    except Exception as e:
+        console.print(f"❌ Failed to load profile: {e}")
+
+
+@config.command()
+@pass_context
+def list_profiles(ctx: CLIContext):
+    """List all available configuration profiles"""
+    profiles = settings.list_profiles()
+    
+    if not profiles:
+        console.print("No profiles found")
+        return
+    
+    table = Table(title="Configuration Profiles")
+    table.add_column("Profile Name", style="cyan")
+    table.add_column("Current", style="green")
+    
+    for profile in profiles:
+        current = "✓" if profile == settings.current_profile else ""
+        table.add_row(profile, current)
+    
+    console.print(table)
+
+
+@config.command()
+@click.argument("profile_name")
+@pass_context
+def delete_profile(ctx: CLIContext, profile_name: str):
+    """Delete a configuration profile"""
+    try:
+        if settings.delete_profile(profile_name):
+            console.print(f"✅ Profile '{profile_name}' deleted successfully")
+        else:
+            console.print(f"❌ Profile '{profile_name}' not found")
+    except Exception as e:
+        console.print(f"❌ Failed to delete profile: {e}")
+
+
+@config.command()
+@pass_context
+def show(ctx: CLIContext):
+    """Show current configuration (excluding sensitive data)"""
+    # Create a safe copy of settings for display
+    safe_config = settings.dict(exclude={'groq': {'api_key'}, 'ollama': {'api_key'}})
+    
+    console.print("[bold blue]Current Configuration:[/bold blue]")
+    
+    # Display basic settings
+    console.print(f"  Default LLM Provider: {safe_config.get('default_llm_provider', 'N/A')}")
+    console.print(f"  Current Profile: {safe_config.get('current_profile', 'N/A')}")
+    console.print(f"  Debug Mode: {safe_config.get('debug_mode', False)}")
+    console.print(f"  Verbose Mode: {safe_config.get('verbose_mode', False)}")
+    
+    # Display provider configurations
+    if 'groq' in safe_config:
+        groq_config = safe_config['groq']
+        console.print(f"  Groq Model: {groq_config.get('model', 'N/A')}")
+        console.print(f"  Groq Enabled: {groq_config.get('enabled', False)}")
+    
+    if 'ollama' in safe_config:
+        ollama_config = safe_config['ollama']
+        console.print(f"  Ollama Model: {ollama_config.get('model', 'N/A')}")
+        console.print(f"  Ollama Base URL: {ollama_config.get('base_url', 'N/A')}")
+        console.print(f"  Ollama Enabled: {ollama_config.get('enabled', False)}")
+    
+    # Display available profiles
+    profiles = settings.list_profiles()
+    if profiles:
+        console.print(f"  Available Profiles: {', '.join(profiles)}")
 
 
 @cli.command()
