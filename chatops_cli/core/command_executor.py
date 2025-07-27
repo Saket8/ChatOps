@@ -108,19 +108,27 @@ class CommandValidator:
             import re
             for pattern in self._dangerous_patterns:
                 if re.search(pattern, command, re.IGNORECASE):
-                    return False, f"Command contains dangerous pattern: {pattern}"
+                    error_msg = f"Command contains dangerous pattern: {pattern}"
+                    self._log_validation_failure(command, error_msg, dev_ops_command.risk_level.value)
+                    return False, error_msg
             
             # Check command length (prevent command injection)
             if len(command) > 1000:
-                return False, "Command too long (max 1000 characters)"
+                error_msg = "Command too long (max 1000 characters)"
+                self._log_validation_failure(command, error_msg, dev_ops_command.risk_level.value)
+                return False, error_msg
             
             # Parse command safely
             try:
                 parsed_cmd = shlex.split(command)
                 if not parsed_cmd:
-                    return False, "Empty command"
+                    error_msg = "Empty command"
+                    self._log_validation_failure(command, error_msg, dev_ops_command.risk_level.value)
+                    return False, error_msg
             except ValueError as e:
-                return False, f"Invalid command syntax: {e}"
+                error_msg = f"Invalid command syntax: {e}"
+                self._log_validation_failure(command, error_msg, dev_ops_command.risk_level.value)
+                return False, error_msg
             
             # Check if base command is in safe list for low-risk operations
             base_cmd = parsed_cmd[0].lower()
@@ -134,17 +142,32 @@ class CommandValidator:
             if os_info.is_windows:
                 # Windows-specific validations
                 if 'format' in command.lower() and 'c:' in command.lower():
-                    return False, "Attempted format of system drive"
+                    error_msg = "Attempted format of system drive"
+                    self._log_validation_failure(command, error_msg, dev_ops_command.risk_level.value)
+                    return False, error_msg
             else:
                 # Unix-specific validations
                 if '>' in command and '/dev/' in command:
-                    return False, "Potential device file manipulation"
+                    error_msg = "Potential device file manipulation"
+                    self._log_validation_failure(command, error_msg, dev_ops_command.risk_level.value)
+                    return False, error_msg
             
             return True, ""
             
         except Exception as e:
+            error_msg = f"Validation error: {e}"
+            self._log_validation_failure(command, error_msg, dev_ops_command.risk_level.value)
             self.logger.error(f"Command validation error: {e}")
-            return False, f"Validation error: {e}"
+            return False, error_msg
+    
+    def _log_validation_failure(self, command: str, reason: str, risk_level: str):
+        """Log command validation failures to the audit system"""
+        try:
+            from .logging_system import get_logging_system
+            logging_system = get_logging_system()
+            logging_system.log_validation_failure(command, reason, risk_level)
+        except Exception as e:
+            self.logger.error(f"Failed to log validation failure: {e}")
 
     def requires_confirmation(self, command: str, dev_ops_command: DevOpsCommand) -> bool:
         """Check if command requires user confirmation"""
@@ -217,28 +240,56 @@ class CommandExecutor:
         self.logger.info(f"Executing command [{command_id}]: {dev_ops_command.command}")
         
         try:
-            # Step 1: Command Validation
-            is_valid, validation_error = self.validator.validate_command(
-                dev_ops_command.command, dev_ops_command
+            # Step 1: Enhanced Security Analysis
+            from .security_system import get_security_system
+            security_system = get_security_system()
+            
+            # Analyze command with security system
+            preview = security_system.analyze_command(
+                dev_ops_command.command, 
+                dev_ops_command.description
+            )
+            
+            # Enhanced validation
+            is_valid, validation_errors = security_system.validate_command(
+                dev_ops_command.command, preview
             )
             
             if not is_valid:
+                validation_error = "; ".join(validation_errors)
                 return ExecutionResult(
                     command=dev_ops_command.command,
                     status=ExecutionStatus.FAILED,
                     return_code=-1,
                     stdout="",
-                    stderr=f"Validation failed: {validation_error}",
+                    stderr=f"Security validation failed: {validation_error}",
                     execution_time=0.0,
                     start_time=start_time,
                     end_time=datetime.now(),
                     error_message=validation_error
                 )
             
-            # Step 2: User Confirmation (if required)
-            if self.validator.requires_confirmation(dev_ops_command.command, dev_ops_command):
+            # Step 2: Create backups if needed
+            backup_files = security_system.create_backup_if_needed(
+                dev_ops_command.command, preview
+            )
+            
+            # Step 3: Register rollback if available
+            security_system.register_rollback_if_available(
+                command_id, dev_ops_command.command, preview, backup_files
+            )
+            
+            # Step 4: Enhanced User Confirmation (if required)
+            if security_system.should_require_confirmation(preview):
                 if user_confirmation_callback:
-                    confirmed = await user_confirmation_callback(dev_ops_command)
+                    # Enhanced confirmation with preview details
+                    confirmed = await user_confirmation_callback(
+                        dev_ops_command.command, 
+                        preview.description,
+                        preview.risk_level.value,
+                        preview.estimated_impact,
+                        preview.warnings
+                    )
                     if not confirmed:
                         return ExecutionResult(
                             command=dev_ops_command.command,
@@ -265,7 +316,7 @@ class CommandExecutor:
                         user_cancelled=True
                     )
             
-            # Step 3: Dry Run Check
+            # Step 5: Dry Run Check
             if context.dry_run:
                 return ExecutionResult(
                     command=dev_ops_command.command,
@@ -278,14 +329,14 @@ class CommandExecutor:
                     end_time=datetime.now()
                 )
             
-            # Step 4: Actual Execution
+            # Step 6: Actual Execution
             result = await self._execute_subprocess(
                 dev_ops_command.command,
                 context,
                 command_id
             )
             
-            # Step 5: Log Execution
+            # Step 7: Log Execution
             if context.log_execution:
                 await self._log_execution(dev_ops_command, result, context)
             
@@ -424,34 +475,32 @@ class CommandExecutor:
         result: ExecutionResult,
         context: ExecutionContext
     ):
-        """Log command execution to history file"""
+        """Log command execution using the comprehensive logging system"""
         try:
-            log_entry = {
-                'timestamp': result.start_time.isoformat(),
-                'command': dev_ops_command.command,
-                'description': dev_ops_command.description,
-                'risk_level': dev_ops_command.risk_level.value,
-                'command_type': dev_ops_command.command_type.value,
-                'status': result.status.value,
-                'return_code': result.return_code,
-                'execution_time': result.execution_time,
-                'working_directory': str(context.working_directory),
-                'dry_run': context.dry_run,
-                'user_cancelled': result.user_cancelled,
-                'error_message': result.error_message
-            }
+            # Import here to avoid circular imports
+            from .logging_system import get_logging_system
             
-            # Add to memory history
+            logging_system = get_logging_system()
+            
+            # Log command execution
+            logging_system.log_command_execution(
+                command=dev_ops_command.command,
+                description=dev_ops_command.description,
+                risk_level=dev_ops_command.risk_level.value,
+                return_code=result.return_code,
+                execution_time=result.execution_time,
+                working_directory=str(context.working_directory),
+                dry_run=context.dry_run,
+                user_cancelled=result.user_cancelled,
+                error_message=result.error_message
+            )
+            
+            # Add to memory history for backward compatibility
             self._execution_history.append(result)
             
             # Limit memory history size
             if len(self._execution_history) > 1000:
                 self._execution_history = self._execution_history[-500:]
-            
-            # Write to log file
-            import json
-            with open(self.history_file, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(log_entry) + '\n')
                 
         except Exception as e:
             self.logger.error(f"Failed to log execution: {e}")

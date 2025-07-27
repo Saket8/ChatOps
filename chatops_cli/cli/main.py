@@ -48,6 +48,7 @@ class CLIContext:
         self.langchain: Optional[LangChainIntegration] = None
         self.plugin_manager: Optional[PluginManager] = None
         self.command_executor: Optional[CommandExecutor] = None
+        self.logging_system: Optional[Any] = None  # Will be set in setup_logging
         # Interactive session state
         self.chat_history: list[dict[str, Any]] = []
         self.session_context: str = ""
@@ -56,11 +57,26 @@ class CLIContext:
 
     def setup_logging(self) -> None:
         """Setup logging based on debug/verbose flags"""
-        level = (
-            logging.DEBUG
-            if self.debug
-            else (logging.INFO if self.verbose else logging.WARNING)
-        )
+        # Initialize the comprehensive logging system
+        from ..core.logging_system import initialize_logging
+        
+        # Configure logging level based on flags
+        if self.debug:
+            settings.logging.level = "DEBUG"
+        elif self.verbose:
+            settings.logging.level = "INFO"
+        else:
+            settings.logging.level = "WARNING"
+        
+        # Initialize the logging system
+        self.logging_system = initialize_logging()
+        
+        # Start a new session for this CLI run
+        session_id = f"cli_{int(datetime.now().timestamp())}"
+        self.logging_system.start_session(session_id)
+        
+        # Setup basic logging for backward compatibility
+        level = getattr(logging, settings.logging.level)
         logging.basicConfig(
             level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
@@ -519,6 +535,7 @@ def status(ctx: CLIContext):
     table.add_row("Groq Service", groq_status, groq_details)
 
     # Check models
+    model_count = 0
     if connected:
         try:
             models = ctx.groq_client.list_models() # Changed from ctx.ollama_client to ctx.groq_client
@@ -567,6 +584,374 @@ def status(ctx: CLIContext):
             model_table.add_row(model.name, model.size, f"{status_emoji} {status_text}")
 
         console.print(model_table)
+
+
+@cli.command()
+@pass_context
+def logs(ctx: CLIContext):
+    """Manage and view application logs and audit trails"""
+    from rich.table import Table
+    from rich.panel import Panel
+    
+    # Get logging system
+    logging_system = ctx.logging_system
+    
+    # Show log file locations
+    log_dir = Path(settings.logging.log_directory)
+    
+    table = Table(title="Log Files")
+    table.add_column("File", style="cyan")
+    table.add_column("Size", style="green")
+    table.add_column("Last Modified", style="yellow")
+    
+    log_files = [
+        ("chatops.log", "Application logs"),
+        ("audit.log", "Audit trail"),
+        ("security.log", "Security events")
+    ]
+    
+    for filename, description in log_files:
+        file_path = log_dir / filename
+        if file_path.exists():
+            size = file_path.stat().st_size
+            mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+            table.add_row(
+                f"{filename} ({description})",
+                f"{size / 1024:.1f} KB",
+                mtime.strftime("%Y-%m-%d %H:%M:%S")
+            )
+        else:
+            table.add_row(f"{filename} ({description})", "Not created", "N/A")
+    
+    console.print(table)
+    
+    # Show recent command history
+    console.print("\n")
+    history = logging_system.get_command_history(limit=10)
+    
+    if history:
+        history_table = Table(title="Recent Command History")
+        history_table.add_column("Time", style="cyan")
+        history_table.add_column("Command", style="green")
+        history_table.add_column("Risk", style="yellow")
+        history_table.add_column("Status", style="magenta")
+        
+        for event in history[-10:]:
+            status = "✅" if event.return_code == 0 else "❌"
+            history_table.add_row(
+                event.timestamp.strftime("%H:%M:%S"),
+                event.command[:50] + "..." if len(event.command) > 50 else event.command,
+                event.risk_level or "N/A",
+                status
+            )
+        
+        console.print(history_table)
+    else:
+        console.print(Panel("No command history available", style="yellow"))
+
+
+@cli.command()
+@click.option("--limit", "-l", type=int, default=50, help="Number of entries to show")
+@click.option("--session", "-s", help="Filter by session ID")
+@click.option("--start-time", help="Filter from start time (YYYY-MM-DD HH:MM:SS)")
+@click.option("--end-time", help="Filter to end time (YYYY-MM-DD HH:MM:SS)")
+@click.option("--level", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "AUDIT", "SECURITY"]), help="Filter by log level")
+@pass_context
+def audit(ctx: CLIContext, limit: int, session: Optional[str], start_time: Optional[str], end_time: Optional[str], level: Optional[str]):
+    """View audit trail and security events"""
+    from rich.table import Table
+    from rich.panel import Panel
+    
+    logging_system = ctx.logging_system
+    
+    # Parse time filters
+    start_dt = None
+    end_dt = None
+    if start_time:
+        try:
+            start_dt = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            console.print(f"[red]Invalid start time format: {start_time}[/red]")
+            return
+    
+    if end_time:
+        try:
+            end_dt = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            console.print(f"[red]Invalid end time format: {end_time}[/red]")
+            return
+    
+    # Get audit trail
+    from ..core.logging_system import LogLevel, EventType
+    
+    event_types = None
+    log_level = None
+    
+    if level:
+        log_level = LogLevel(level)
+    
+    audit_events = logging_system.get_audit_trail(
+        event_types=event_types,
+        start_time=start_dt,
+        end_time=end_dt,
+        level=log_level
+    )
+    
+    if not audit_events:
+        console.print(Panel("No audit events found for the specified criteria", style="yellow"))
+        return
+    
+    # Display audit events
+    table = Table(title=f"Audit Trail ({len(audit_events)} events)")
+    table.add_column("Timestamp", style="cyan")
+    table.add_column("Level", style="yellow")
+    table.add_column("Event Type", style="green")
+    table.add_column("Message", style="white")
+    table.add_column("Session", style="magenta")
+    
+    for event in audit_events[-limit:]:
+        timestamp = event.get('timestamp', 'N/A')
+        if timestamp != 'N/A':
+            try:
+                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                timestamp = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except:
+                pass
+        
+        table.add_row(
+            timestamp,
+            event.get('level', 'N/A'),
+            event.get('event_type', 'N/A'),
+            event.get('message', 'N/A')[:60] + "..." if len(event.get('message', '')) > 60 else event.get('message', 'N/A'),
+            event.get('session_id', 'N/A')[:10] + "..." if len(event.get('session_id', '')) > 10 else event.get('session_id', 'N/A')
+        )
+    
+    console.print(table)
+
+
+@cli.command()
+@click.option("--days", "-d", type=int, default=30, help="Number of days to retain logs")
+@pass_context
+def cleanup_logs(ctx: CLIContext, days: int):
+    """Clean up old log files based on retention policy"""
+    from rich.panel import Panel
+    
+    logging_system = ctx.logging_system
+    
+    console.print(f"[yellow]Cleaning up logs older than {days} days...[/yellow]")
+    
+    cleaned_count = logging_system.cleanup_old_logs(retention_days=days)
+    
+    if cleaned_count > 0:
+        console.print(Panel(f"Cleaned up {cleaned_count} old log files", style="green"))
+    else:
+        console.print(Panel("No old log files found to clean up", style="blue"))
+
+
+@cli.command()
+@click.argument("command", required=True)
+@pass_context
+def preview(ctx: CLIContext, command: str):
+    """Preview a command with security analysis before execution"""
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.console import Console
+    
+    console = Console()
+    
+    # Get security system
+    from ..core.security_system import get_security_system
+    security_system = get_security_system()
+    
+    # Analyze command
+    preview = security_system.analyze_command(command, "Command preview")
+    
+    # Display preview
+    console.print(Panel(f"[bold blue]Command Preview[/bold blue]\n[green]{command}[/green]", 
+                       title="🔍 Security Analysis"))
+    
+    # Risk assessment
+    risk_color = {
+        "safe": "green",
+        "low": "yellow", 
+        "medium": "orange",
+        "high": "red",
+        "critical": "red"
+    }.get(preview.risk_level.value, "white")
+    
+    console.print(f"[bold]Risk Level:[/bold] [{risk_color}]{preview.risk_level.value.upper()}[/{risk_color}]")
+    console.print(f"[bold]Operation Type:[/bold] {preview.operation_type.value}")
+    console.print(f"[bold]Estimated Impact:[/bold] {preview.estimated_impact}")
+    console.print(f"[bold]Requires Confirmation:[/bold] {'Yes' if preview.requires_confirmation else 'No'}")
+    console.print(f"[bold]Rollback Available:[/bold] {'Yes' if preview.rollback_available else 'No'}")
+    
+    # Affected files
+    if preview.affected_files:
+        console.print(f"\n[bold]Affected Files:[/bold]")
+        for file_path in preview.affected_files:
+            console.print(f"  📄 {file_path}")
+    
+    # Affected services
+    if preview.affected_services:
+        console.print(f"\n[bold]Affected Services:[/bold]")
+        for service in preview.affected_services:
+            console.print(f"  🔧 {service}")
+    
+    # Safety checks
+    if preview.safety_checks:
+        console.print(f"\n[bold]Safety Checks:[/bold]")
+        for check in preview.safety_checks:
+            console.print(f"  ✅ {check}")
+    
+    # Warnings
+    if preview.warnings:
+        console.print(f"\n[bold red]Warnings:[/bold red]")
+        for warning in preview.warnings:
+            console.print(f"  ⚠️  {warning}")
+    
+    # Rollback command
+    if preview.rollback_command:
+        console.print(f"\n[bold]Rollback Command:[/bold]")
+        console.print(f"  🔄 {preview.rollback_command}")
+
+
+@cli.command()
+@pass_context
+def security_status(ctx: CLIContext):
+    """Show security system status and configuration"""
+    from rich.table import Table
+    from rich.panel import Panel
+    
+    # Get security system
+    from ..core.security_system import get_security_system
+    security_system = get_security_system()
+    
+    # Get security report
+    report = security_system.get_security_report()
+    
+    # Display security settings
+    settings_table = Table(title="Security Settings")
+    settings_table.add_column("Setting", style="cyan")
+    settings_table.add_column("Value", style="green")
+    
+    for key, value in report["security_settings"].items():
+        settings_table.add_row(key.replace("_", " ").title(), str(value))
+    
+    console.print(settings_table)
+    
+    # Display blacklist status
+    blacklist_table = Table(title="Blacklist Status")
+    blacklist_table.add_column("Type", style="cyan")
+    blacklist_table.add_column("Count", style="green")
+    
+    for blacklist_type, items in report["blacklist_status"].items():
+        count = len(items) if isinstance(items, list) else "N/A"
+        blacklist_table.add_row(blacklist_type.title(), str(count))
+    
+    console.print(blacklist_table)
+    
+    # Display statistics
+    stats_table = Table(title="Security Statistics")
+    stats_table.add_column("Metric", style="cyan")
+    stats_table.add_column("Value", style="green")
+    
+    stats_table.add_row("Command History", str(report["command_history_count"]))
+    stats_table.add_row("Rollback Operations", str(report["rollback_operations_count"]))
+    
+    console.print(stats_table)
+
+
+@cli.command()
+@click.option("--command", "-c", help="Command to add to blacklist")
+@click.option("--reason", "-r", help="Reason for blacklisting")
+@click.option("--remove", is_flag=True, help="Remove command from blacklist instead")
+@pass_context
+def blacklist(ctx: CLIContext, command: Optional[str], reason: Optional[str], remove: bool):
+    """Manage command blacklist"""
+    from rich.panel import Panel
+    
+    if not command:
+        console.print(Panel("Please provide a command with --command option", style="red"))
+        return
+    
+    # Get security system
+    from ..core.security_system import get_security_system
+    security_system = get_security_system()
+    
+    if remove:
+        success = security_system.blacklist.remove_from_blacklist(command)
+        if success:
+            console.print(Panel(f"✅ Removed '{command}' from blacklist", style="green"))
+        else:
+            console.print(Panel(f"❌ Failed to remove '{command}' from blacklist", style="red"))
+    else:
+        success = security_system.blacklist.add_to_blacklist(command, reason or "User request")
+        if success:
+            console.print(Panel(f"✅ Added '{command}' to blacklist", style="green"))
+        else:
+            console.print(Panel(f"❌ Failed to add '{command}' to blacklist", style="red"))
+
+
+@cli.command()
+@click.argument("command_id", required=True)
+@pass_context
+def rollback(ctx: CLIContext, command_id: str):
+    """Execute a rollback operation for a previous command"""
+    from rich.panel import Panel
+    import asyncio
+    
+    # Get security system
+    from ..core.security_system import get_security_system
+    security_system = get_security_system()
+    
+    console.print(f"[yellow]Executing rollback for command {command_id}...[/yellow]")
+    
+    # Execute rollback
+    success = asyncio.run(security_system.execute_rollback(command_id))
+    
+    if success:
+        console.print(Panel(f"✅ Rollback completed successfully for {command_id}", style="green"))
+    else:
+        console.print(Panel(f"❌ Rollback failed for {command_id}", style="red"))
+
+
+@cli.command()
+@click.option("--limit", "-l", type=int, default=10, help="Number of operations to show")
+@pass_context
+def rollback_history(ctx: CLIContext, limit: int):
+    """Show rollback operation history"""
+    from rich.table import Table
+    
+    # Get security system
+    from ..core.security_system import get_security_system
+    security_system = get_security_system()
+    
+    # Get rollback history
+    history = security_system.rollback_manager.get_rollback_history(limit=limit)
+    
+    if not history:
+        console.print("No rollback operations found.")
+        return
+    
+    # Display history
+    table = Table(title=f"Rollback History (Last {len(history)} operations)")
+    table.add_column("Command ID", style="cyan")
+    table.add_column("Original Command", style="green")
+    table.add_column("Rollback Command", style="yellow")
+    table.add_column("Timestamp", style="magenta")
+    table.add_column("Status", style="white")
+    
+    for op in history:
+        status = "✅ Success" if op.success else "❌ Failed"
+        table.add_row(
+            str(op.timestamp.strftime("%Y-%m-%d %H:%M:%S")),
+            op.original_command[:50] + "..." if len(op.original_command) > 50 else op.original_command,
+            op.rollback_command[:50] + "..." if len(op.rollback_command) > 50 else op.rollback_command,
+            op.timestamp.strftime("%H:%M:%S"),
+            status
+        )
+    
+    console.print(table)
 
 
 @cli.command()

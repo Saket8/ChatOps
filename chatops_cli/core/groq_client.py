@@ -135,6 +135,21 @@ CRITICAL: Always provide commands appropriate for {os_info.name}:
             # Generate response
             response = await self._client.ainvoke(messages)
             
+            # Log LLM event
+            try:
+                from .logging_system import get_logging_system, EventType
+                logging_system = get_logging_system()
+                logging_system.log_llm_event(
+                    event_type=EventType.LLM_RESPONSE,
+                    provider="groq",
+                    model=model or settings.groq_model,
+                    message="Response generated successfully",
+                    success=True,
+                    token_count=getattr(response, 'usage', {}).get('total_tokens')
+                )
+            except Exception as log_error:
+                self.logger.error(f"Failed to log LLM event: {log_error}")
+            
             return GroqResponse(
                 content=response.content,
                 success=True,
@@ -144,6 +159,21 @@ CRITICAL: Always provide commands appropriate for {os_info.name}:
             
         except Exception as e:
             self.logger.error(f"Groq API request failed: {e}")
+            
+            # Log LLM error
+            try:
+                from .logging_system import get_logging_system, EventType
+                logging_system = get_logging_system()
+                logging_system.log_llm_event(
+                    event_type=EventType.LLM_RESPONSE,
+                    provider="groq",
+                    model=model or settings.groq_model,
+                    message=f"Error generating response: {str(e)}",
+                    success=False
+                )
+            except Exception as log_error:
+                self.logger.error(f"Failed to log LLM error: {log_error}")
+            
             return GroqResponse(
                 content="",
                 success=False,

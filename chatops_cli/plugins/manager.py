@@ -369,9 +369,38 @@ class PluginManager:
                     await hook(plugin_instance)
 
                 self.logger.info(f"Loaded plugin: {plugin_name} v{metadata.version}")
+                
+                # Log plugin load event
+                try:
+                    from ..core.logging_system import get_logging_system, EventType
+                    logging_system = get_logging_system()
+                    logging_system.log_plugin_event(
+                        plugin_name=plugin_name,
+                        event_type=EventType.PLUGIN_LOAD,
+                        message=f"Plugin loaded successfully: {plugin_name} v{metadata.version}",
+                        success=True
+                    )
+                except Exception as log_error:
+                    self.logger.error(f"Failed to log plugin event: {log_error}")
+                
                 return True
             else:
                 self.logger.warning(f"Plugin {plugin_name} initialization failed - skipping")
+                
+                # Log plugin load failure
+                try:
+                    from ..core.logging_system import get_logging_system, EventType
+                    logging_system = get_logging_system()
+                    logging_system.log_plugin_event(
+                        plugin_name=plugin_name,
+                        event_type=EventType.PLUGIN_ERROR,
+                        message=f"Plugin initialization failed: {plugin_name}",
+                        success=False,
+                        error_message="Initialization failed"
+                    )
+                except Exception as log_error:
+                    self.logger.error(f"Failed to log plugin error: {log_error}")
+                
                 return False
 
         except Exception as e:
@@ -379,6 +408,21 @@ class PluginManager:
                 f"Error loading plugin class {plugin_class.__name__}: {e}"
             )
             self.logger.debug(traceback.format_exc())
+            
+            # Log plugin load error
+            try:
+                from ..core.logging_system import get_logging_system, EventType
+                logging_system = get_logging_system()
+                logging_system.log_plugin_event(
+                    plugin_name=plugin_class.__name__,
+                    event_type=EventType.PLUGIN_ERROR,
+                    message=f"Error loading plugin class: {str(e)}",
+                    success=False,
+                    error_message=str(e)
+                )
+            except Exception as log_error:
+                self.logger.error(f"Failed to log plugin error: {log_error}")
+            
             return False
 
     async def _check_dependencies(self, metadata: PluginMetadata) -> bool:
