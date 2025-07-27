@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --with dev
+
+    - name: Run tests
+      run: poetry run pytest --cov=chatops_cli
+
+    - name: Run linting
+      run: |
+        poetry run black --check .
+        poetry run ruff check .
+        poetry run mypy chatops_cli/
+
+  build-and-publish:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --with dev
+
+    - name: Build package
+      run: poetry build
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        packages-dir: dist/
+
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        body: |
+          ## What's Changed
+          
+          This release includes:
+          - Bug fixes and improvements
+          - Enhanced security features
+          - Improved documentation
+          
+          ## Installation
+          
+          ```bash
+          pip install chatops-cli
+          ```
+          
+          ## Changelog
+          
+          See the [full changelog](https://github.com/${{ github.repository }}/compare/previous-tag...${{ github.ref }}) for detailed changes.
+        draft: false
+        prerelease: false
+
+  notify:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: build-and-publish
+    if: success()
+
+    steps:
+    - name: Notify Discord (optional)
+      uses: sarisia/actions-status-discord@v1
+      if: env.DISCORD_WEBHOOK
+      with:
+        webhook: ${{ secrets.DISCORD_WEBHOOK }}
+        status: success
+        title: "🚀 ChatOps CLI Release"
+        description: "New version ${{ github.ref }} has been released!" 

@@ -1,0 +1,178 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --with dev
+
+    - name: Check code formatting with Black
+      run: poetry run black --check --diff .
+
+    - name: Run Ruff linter
+      run: poetry run ruff check .
+
+    - name: Run Ruff formatter check
+      run: poetry run ruff format --check .
+
+    - name: Run MyPy type checker
+      run: poetry run mypy chatops_cli/
+
+    - name: Check for unused imports
+      run: poetry run ruff check --select F401 .
+
+    - name: Check for unused variables
+      run: poetry run ruff check --select F841 .
+
+    - name: Check for undefined names
+      run: poetry run ruff check --select F821 .
+
+    - name: Check for import sorting
+      run: poetry run ruff check --select I001 .
+
+    - name: Generate code quality report
+      run: |
+        echo "## Code Quality Report" > quality-report.md
+        echo "" >> quality-report.md
+        echo "### Black Formatting" >> quality-report.md
+        poetry run black --check --diff . >> quality-report.md 2>&1 || echo "Formatting issues found" >> quality-report.md
+        echo "" >> quality-report.md
+        echo "### Ruff Linting" >> quality-report.md
+        poetry run ruff check . >> quality-report.md 2>&1 || echo "Linting issues found" >> quality-report.md
+        echo "" >> quality-report.md
+        echo "### MyPy Type Checking" >> quality-report.md
+        poetry run mypy chatops_cli/ >> quality-report.md 2>&1 || echo "Type checking issues found" >> quality-report.md
+
+    - name: Upload quality report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: code-quality-report
+        path: quality-report.md
+
+  complexity:
+    name: Code Complexity Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --with dev
+
+    - name: Install complexity analysis tools
+      run: |
+        poetry run pip install radon
+        poetry run pip install xenon
+
+    - name: Run complexity analysis
+      run: |
+        echo "## Code Complexity Report" > complexity-report.md
+        echo "" >> complexity-report.md
+        echo "### Cyclomatic Complexity" >> complexity-report.md
+        poetry run radon cc chatops_cli/ -a >> complexity-report.md
+        echo "" >> complexity-report.md
+        echo "### Maintainability Index" >> complexity-report.md
+        poetry run radon mi chatops_cli/ >> complexity-report.md
+        echo "" >> complexity-report.md
+        echo "### Halstead Metrics" >> complexity-report.md
+        poetry run radon hal chatops_cli/ >> complexity-report.md
+
+    - name: Check complexity thresholds
+      run: |
+        poetry run xenon chatops_cli/ --max-absolute A --max-modules A --max-average A
+
+    - name: Upload complexity report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: complexity-report
+        path: complexity-report.md
+
+  documentation:
+    name: Documentation Checks
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --with dev
+
+    - name: Install documentation tools
+      run: |
+        poetry run pip install pydocstyle
+        poetry run pip install doc8
+
+    - name: Check docstring style
+      run: poetry run pydocstyle chatops_cli/
+
+    - name: Check documentation formatting
+      run: |
+        if [ -f "README.md" ]; then
+          poetry run doc8 README.md
+        fi
+
+    - name: Generate documentation coverage report
+      run: |
+        echo "## Documentation Coverage Report" > doc-report.md
+        echo "" >> doc-report.md
+        echo "### Docstring Coverage" >> doc-report.md
+        poetry run pydocstyle chatops_cli/ >> doc-report.md 2>&1 || echo "Documentation issues found" >> doc-report.md
+
+    - name: Upload documentation report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: documentation-report
+        path: doc-report.md 

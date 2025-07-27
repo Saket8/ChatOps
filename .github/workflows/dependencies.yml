@@ -1,0 +1,119 @@
+name: Dependencies
+
+on:
+  schedule:
+    # Check for updates weekly
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check-updates:
+    name: Check for Updates
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Check for outdated dependencies
+      run: |
+        poetry show --outdated --format json > outdated.json
+        poetry show --outdated
+
+    - name: Create Pull Request for updates
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: update dependencies'
+        title: 'chore: update dependencies'
+        body: |
+          ## 🔄 Dependency Updates
+          
+          This PR updates outdated dependencies to their latest versions.
+          
+          ### Updated Packages:
+          - See the changes below for details
+          
+          ### Testing:
+          - [ ] All tests pass
+          - [ ] No breaking changes
+          - [ ] Security scan passes
+          
+          ### Notes:
+          - This is an automated PR
+          - Please review the changes before merging
+        branch: chore/update-dependencies
+        delete-branch: true
+        path: .
+        committer: GitHub <noreply@github.com>
+        author: GitHub <noreply@github.com>
+
+  security-updates:
+    name: Security Updates
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+
+    - name: Install dependencies
+      run: poetry install --with dev
+
+    - name: Check for security vulnerabilities
+      run: |
+        poetry run pip install safety
+        poetry run safety check --json --output safety-report.json
+
+    - name: Create security update PR
+      if: failure()
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'security: fix vulnerabilities'
+        title: 'security: fix vulnerabilities'
+        body: |
+          ## 🔒 Security Updates
+          
+          This PR addresses security vulnerabilities found in dependencies.
+          
+          ### Vulnerabilities Found:
+          - See safety report for details
+          
+          ### Actions Required:
+          - [ ] Review security report
+          - [ ] Update vulnerable packages
+          - [ ] Test thoroughly
+          - [ ] Verify no breaking changes
+          
+          ### Notes:
+          - This is an automated PR for security fixes
+          - High priority - please review and merge quickly
+        branch: security/fix-vulnerabilities
+        delete-branch: true
+        path: .
+        committer: GitHub <noreply@github.com>
+        author: GitHub <noreply@github.com> 
