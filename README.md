@@ -4,9 +4,9 @@
 
 A powerful command-line interface that combines the capabilities of LangChain with local LLM providers (Ollama) and cloud APIs (Groq) to create an intelligent, offline-capable ChatOps solution.
 
-[![CI](https://github.com/Saket8/ChatOps/actions/workflows/ci.yml/badge.svg)](https://github.com/Saket8/ChatOps/actions/workflows/ci.yml)
-[![Security](https://github.com/Saket8/ChatOps/actions/workflows/security.yml/badge.svg)](https://github.com/Saket8/ChatOps/actions/workflows/security.yml)
-[![Code Quality](https://github.com/Saket8/ChatOps/actions/workflows/code-quality.yml/badge.svg)](https://github.com/Saket8/ChatOps/actions/workflows/code-quality.yml)
+[![CI](https://github.com/saketsrv8/ChatOps/actions/workflows/ci.yml/badge.svg)](https://github.com/saketsrv8/ChatOps/actions/workflows/ci.yml)
+[![Security](https://github.com/saketsrv8/ChatOps/actions/workflows/security.yml/badge.svg)](https://github.com/saketsrv8/ChatOps/actions/workflows/security.yml)
+[![Code Quality](https://github.com/saketsrv8/ChatOps/actions/workflows/code-quality.yml/badge.svg)](https://github.com/saketsrv8/ChatOps/actions/workflows/code-quality.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -470,10 +470,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- 📧 Email: [your-email@example.com]
-- 🐛 Issues: [GitHub Issues](https://github.com/Saket8/ChatOps/issues)
-- 📖 Documentation: [Wiki](https://github.com/Saket8/ChatOps/wiki)
-- 💬 Discussions: [GitHub Discussions](https://github.com/Saket8/ChatOps/discussions)
+- 📧 Email: [saketsrv8@gmail.com](mailto:saketsrv8@gmail.com)
+- 🐛 Issues: [GitHub Issues](https://github.com/saketsrv8/ChatOps/issues)
+- 📖 Documentation: [Wiki](https://github.com/saketsrv8/ChatOps/wiki)
+- 💬 Discussions: [GitHub Discussions](https://github.com/saketsrv8/ChatOps/discussions)
 
 ---
 
